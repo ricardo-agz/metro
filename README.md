@@ -237,6 +237,33 @@ async def upload_attachments(
     return post.to_dict()
 ```
 
+### File Storage Configuration
+The default configuration is set to use the local filesystem and store files in the `uploads` directory. You can change the storage backend and location in the `config/development.py` or `config/production.py` file.
+
+Default configuration:
+```python
+FILE_STORAGE_BACKEND = "filesystem"
+FILE_SYSTEM_STORAGE_LOCATION = "./uploads"
+FILE_SYSTEM_BASE_URL = "/uploads/"
+```
+
+Custom configuration in `config/development.py` or `config/production.py`:
+```python
+FILE_STORAGE_BACKEND = 'filesystem'
+FILE_SYSTEM_STORAGE_LOCATION = './uploads_dev'
+FILE_SYSTEM_BASE_URL = '/uploads_dev/'
+```
+Or to use AWS S3:
+```python
+FILE_STORAGE_BACKEND = 's3'
+S3_BUCKET_NAME = "my-bucket"
+AWS_ACCESS_KEY_ID = "..."
+AWS_SECRET_ACCESS_KEY = "..."
+AWS_REGION_NAME = "us-east-1"
+```
+
+---
+
 ## Controller Lifecycle Hooks
 
 Lifecycle hooks like `before_request` and `after_request` can be defined directly in a controller or inherited from a parent controller. Hooks are useful for tasks such as authentication, logging, or cleanup.
@@ -279,6 +306,34 @@ class AdminUserController(AdminController):
 ### Execution:
 - If a `before_request` hook raises an exception (e.g., `UnauthorizedError`), the request handler is skipped, but the `after_request` hook still runs.
 
+---
+
+## Email Sending
+Easily send emails using the built-in `EmailSender` class, which supports multiple email providers like Mailgun and AWS SES.
+
+```python
+# 1. Configure the provider:
+# - For Mailgun
+mailgun_provider = MailgunProvider(
+    domain=os.getenv("MAILGUN_DOMAIN"), api_key=os.getenv("MAILGUN_API_KEY")
+)
+mailgun_sender = EmailSender(provider=mailgun_provider)
+
+# - For AWS SES (coming soon)
+ses_provider = AWSESProvider(region_name="us-west-2")
+ses_sender = EmailSender(provider=ses_provider)
+
+# 2. Send the email:
+mailgun_sender.send_email(
+    source="sender@example.com",
+    recipients=["recipient@example.com"],
+    subject="Test Email",
+    body="This is a test email sent using Mailgun.",
+)
+```
+
+---
+
 ## Database Management
 
 PyRails provides commands to manage your MongoDB database.
@@ -307,6 +362,8 @@ You can also specify the environment and run MongoDB in a Docker container:
 pyrails db up --env production --docker
 ```
 
+---
+
 ## Configuration
 
 Environment-specific configuration files are located in the `config` directory:
@@ -316,13 +373,7 @@ Environment-specific configuration files are located in the `config` directory:
 
 Here you can set your `DATABASE_URL`, API keys, and other settings that vary between environments.
 
-## Testing
-
-Write tests in the `tests` directory. You can run your test suite using:
-
-```
-python -m pytest
-```
+---
 
 ## Documentation and Help
 
@@ -331,6 +382,7 @@ python -m pytest
 
 For guides, tutorials, and detailed API references, check out the PyRails documentation site.
 
+---
 
 ## License
 
