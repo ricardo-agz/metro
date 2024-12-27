@@ -11,7 +11,6 @@ setup(
         "click",
         "inflect",
         "python-dotenv",
-        "hashlib",
         "pydantic",
         "cryptography",
         "websockets",

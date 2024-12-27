@@ -5,6 +5,13 @@ import inflect
 p = inflect.engine()
 
 
+def is_valid_identifier(name: str) -> bool:
+    """Check if the provided name is a valid Python identifier."""
+    import re
+
+    return re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name) is not None
+
+
 def split_on_case_change(string):
     """Split a string on case changes."""
     return re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\d|\W|$)|\d+", string)

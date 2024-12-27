@@ -16,12 +16,15 @@ prevent the SaaSification of the developer stack.
 - Environment-specific configurations
 - Automatic API documentation
 
+---
 
 ## Installation
 
 Install PyRails using pip:
 
 `pip install pyrails`
+
+---
 
 ## Creating a New Project
 
@@ -32,10 +35,10 @@ pyrails new my_project
 cd my_project
 ```
 
-This will create a new directory `myapp` with the default project structure:
+This will create a new directory `my_project` with the default project structure:
 
 ```
-myapp/
+my_project/
 ├── app/
 │   ├── controllers/
 │   ├── models/
@@ -48,6 +51,8 @@ myapp/
 ├── Dockerfile
 └── docker-compose.yml
 ```
+
+---
 
 ## Starting the Development Server
 
@@ -66,6 +71,7 @@ You can also run the service using Docker:
 pyrails run --docker
 ```
 
+---
 
 ## Scaffolding Resources
 
@@ -83,6 +89,7 @@ This will generate:
 - `app/controllers/posts_controller.py` with CRUD route handlers
 - Update `app/controllers/__init__.py` to import the new controller
 - Update `app/models/__init__.py` to import the new model 
+
 
 ## Generating Models and Controllers
 
@@ -110,11 +117,18 @@ You can also pass in the routes to generate as arguments:
 pyrails generate controller Auth post:login post:register
 ```
 
-### More field types
+## Field types
 
-#### Defining Relationships and Field Options
+### Basic Field Types:
+`str`, `int`, `float`, `bool`, `datetime`, `date`, `dict`, `list`.
 
-When generating models, you can define relationships between models and specify field options.
+
+### Special Field Types:
+`ref`, `file`, `list:ref`, `list:file`, `hashed_str`.
+
+### Defining Model Relationships
+
+You can define relationships between models using the following syntax:
 
 - **One-to-Many Relationship**: Use the `ref:` prefix followed by the related model name.
 
@@ -132,7 +146,11 @@ pyrails generate model Student courses:list:ref:Course
 
 This will generate a `Student` model with a `courses` field that is a list of references to `Course` models.
 
-- **Optional Field**: Append `_` to the field name to mark it as optional.
+### Field Modifiers
+`_`, `^` are used to define a field as optional or unique.
+
+#### Optional Field: 
+Append `_` to the field name to mark it as optional.
 
 ```
 pyrails generate model User email_:str
@@ -140,7 +158,8 @@ pyrails generate model User email_:str
 
 This will generate a `User` model with an optional `email` field.
 
-- **Unique Field**: Append `^` to the field name to specify it as unique.
+#### Unique Field: 
+Append `^` to the field name to specify it as unique.
 
 ```
 pyrails generate model User username^:str
@@ -148,9 +167,10 @@ pyrails generate model User username^:str
 
 This will generate a `User` model with a unique `username` field.
 
-#### Specialty Field Types
+## Specialty Field Types
 
-- **Hashed Field**: Use `_hashed:` suffix to store the field as a hashed value.
+### Hashed Field 
+`hashed_str` is a special field type that automatically hashes the value before storing it in the database.
 
 ```
 pyrails generate model User name:str password_hashed:str
@@ -158,15 +178,64 @@ pyrails generate model User name:str password_hashed:str
 
 This will generate a `User` model with a `password` field stored as a hashed value.
 
-- **Encrypted Field**: Use `_encrypted:` suffix to store the field as an encrypted value.
+### File Fields
+`file` and `list:file` are special field types for handling file uploads. They automatically upload
+files to the specified storage backend (local filesystem, AWS S3, etc.) and store the file path and file metadata in the database.
 
+- **`file`**: Generates a single `FileField` on the model.
+- **`list:file`**: Generates a `FileListField`, allowing multiple files.
+
+Example usage:
 ```
-pyrails generate model User name:str email_encrypted:str secret_note_encrypted:str
+pyrails generate model User avatar:file
+pyrails generate model Post attachments:list:file
 ```
 
-This will generate a `User` model with `email` and `secret_note` fields stored as encrypted values.
+This will generate the following model classes:
 
-PyRails supports the following field types: `str`, `int`, `float`, `bool`, `datetime`, `date`, `dict`, `list`.
+```python
+class User(BaseModel):
+    avatar = FileField()
+    
+class Post(BaseModel):
+    attachments = FileListField()
+```
+
+Uploading files to s3 then becomes as easy as:
+
+```python
+# Set an individual file field
+@put('/users/{id}/update-avatar')
+async def update_avatar(
+    self,
+    id: str,
+    avatar: UploadFile = File(None),
+):
+    user = User.find_by_id(id=id)
+    if avatar:
+        # This stages the file for upload
+        user.avatar = avatar
+        # This actually uploads the file and stores the metadata in the database
+        user.save()
+    
+    return user.to_dict()
+
+# Work with a list of files 
+@post('/posts/{id}/upload-attachments')
+async def upload_attachments(
+    self,
+    id: str,
+    attachments: List[UploadFile] = File(None),
+):
+    post = Post.find_by_id(id=id)
+    if attachments:
+        # This stages the new files for upload
+        post.attachments.extend(attachments)
+        # This actually uploads the files and adds appends to the attachments list in the db with the new metadata
+        post.save()
+    
+    return post.to_dict()
+```
 
 ## Controller Lifecycle Hooks
 

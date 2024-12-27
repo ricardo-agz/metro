@@ -3,12 +3,15 @@ import os
 
 PROJECT_DIRS = [
     "pyrails",
-    "my_project",
-    "app",
-    "config",
-    "migrations",
-    "models",
-    "controllers",
+    "examples",
+    "auth_demo",
+    # "app",
+    # "config",
+    # "migrations",
+    # "models",
+    # "controllers",
+    "workers",
+    "jobs",
 ]  # also consider files in the root directory
 
 

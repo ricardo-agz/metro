@@ -1,9 +1,10 @@
+from datetime import datetime
 from mongoengine import Document
 from .base_logic import BaseModelLogic
-from datetime import datetime
+from .specialty_fields.file_field import FileHandlingMixin
 
 
-class BaseModel(BaseModelLogic, Document):
+class BaseModel(BaseModelLogic, FileHandlingMixin, Document):
     """
     Abstract base class for MongoEngine Documents, inheriting from both
     Document and BaseModelMixin.
@@ -15,5 +16,14 @@ class BaseModel(BaseModelLogic, Document):
     }
 
     def save(self, *args, **kwargs) -> "BaseModel":
-        self.updated_at = datetime.utcnow()
-        return super().save(*args, **kwargs)
+        try:
+            self.validate()  # Run validation
+            self.clean()  # Run validation
+            self.pre_save()  # Run pre-save hooks
+            self.updated_at = datetime.utcnow()
+            result = super().save(*args, **kwargs)
+            self.post_save()  # Run post-save hooks
+            return result
+        except Exception as e:
+            self.handle_save_error(e)
+            raise

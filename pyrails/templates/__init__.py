@@ -7,3 +7,5 @@ from .gitignore_template import gitignore_template
 from .dockerignore_template import dockerignore_template
 from .readme_template import readme_template
 from .main_template import main_template
+from .job_template import job_template
+from .worker_template import worker_template

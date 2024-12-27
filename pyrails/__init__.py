@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Response
 from .config import Config
 from .exceptions import exception_handlers
 from .db.connect_db import db_manager
+from .jobs.worker import PyRailsWorker
 
 
 class PyRailsApp(FastAPI):
@@ -56,4 +57,5 @@ __all__ = [
     "Request",
     "Response",
     "Config",
+    "PyRailsWorker",
 ]

@@ -17,6 +17,8 @@ mongoengine_type_mapping = {
     "list[bool]": "ListField(BooleanField())",
     "list[float]": "ListField(FloatField())",
     "list[datetime]": "ListField(DateTimeField())",
+    "file": "FileField()",
+    "list[file]": "FileListField()"
 }
 
 tortoise_type_mapping = {

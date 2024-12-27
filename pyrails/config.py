@@ -26,6 +26,15 @@ class Config:
             }
         }
 
+        self.FILE_STORAGE_BACKEND = "filesystem"
+        self.FILE_SYSTEM_STORAGE_LOCATION = "./uploads"
+        self.FILE_SYSTEM_BASE_URL = "/uploads/"
+
+        self.S3_BUCKET_NAME = ""
+        self.AWS_ACCESS_KEY_ID = ""
+        self.AWS_SECRET_ACCESS_KEY = ""
+        self.AWS_REGION_NAME = ""
+
     def load_from_module(self, module):
         """Load configuration from a given module."""
         for key in dir(module):

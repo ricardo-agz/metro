@@ -1,82 +1,35 @@
 readme_template = """# {PROJECT_NAME}
 
-A PyRails application built with FastAPI and MongoEngine, providing a Ruby on Rails-like experience for Python developers.
-
-## Features
-
-- FastAPI-based web framework with MongoEngine ORM
-- CLI tool for project management and code generation
-- Built-in database management (MongoDB)
-- Support for local and Docker-based development
-- Environment-specific configurations
-- Automatic API documentation
+This project was bootstrapped with PyRails. 
 
 ## Quick Start
 
-### Local Setup
+### Installation
 
-1. Install PyRails:
-   ```
-   pip install pyrails
-   ```
+```
+pip install pyrails
+```
 
-2. Create a new project:
-   ```
-   pyrails new {{PROJECT_NAME}}
-   cd {{PROJECT_NAME}}
-   ```
+### Available Scripts
 
-3. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Start MongoDB:
+Start MongoDB:
    ```
    pyrails db up
    ```
 
-5. Run the application:
+Run the application:
    ```
    pyrails run
    ```
-
-### Docker Setup
-
-1. Create a new project:
-   ```
-   pyrails new {{PROJECT_NAME}}
-   cd {{PROJECT_NAME}}
-   ```
-
-2. Build and run with Docker Compose:
-   ```
-   docker-compose up --build
-   ```
+   
+Run the application (with Docker):
+    ```
+    pyrails run --docker
+    ```
 
 Access the app at `http://localhost:8000`.
 
-## Project Structure
-
-```
-{{PROJECT_NAME}}/
-├── app/
-│   ├── controllers/
-│   ├── models/
-│   └── __init__.py
-├── config/
-│   ├── development.py
-│   ├── production.py
-│   ├── testing.py
-│   └── __init__.py
-├── main.py
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
-```
-
-## Development
+## Features
 
 ### CLI Commands
 
