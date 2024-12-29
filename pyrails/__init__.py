@@ -1,8 +1,68 @@
 from fastapi import FastAPI, Request, Response
+from fastapi.routing import ASGIApp
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import Headers
+from typing import Callable
 from .config import Config
 from .exceptions import exception_handlers
 from .db.connect_db import db_manager
 from .jobs.worker import PyRailsWorker
+
+
+class MethodOverrideMiddleware(BaseHTTPMiddleware):
+    def __init__(
+            self,
+            app: ASGIApp,
+            override_method_header: str = "X-HTTP-Method-Override"
+    ):
+        super().__init__(app)
+        self.override_method_header = override_method_header
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        original_receive = request.scope.get("receive", None)
+
+        # Only check for method override if we have a _method field in the form
+        # or the override header is present
+        if request.headers.get(self.override_method_header) or (
+                request.method == "POST" and
+                any(h[0].decode() == "content-type" and b"form" in h[1] for h in request.scope["headers"])
+        ):
+            # Create a buffer for the body
+            body = await request.body()
+
+            async def receive():
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            # Update request to use our modified receive
+            request.scope["receive"] = receive
+
+            # Try to get method from headers first
+            method = request.headers.get(self.override_method_header)
+
+            # If no header, try to get from form data
+            if not method and request.method == "POST":
+                content_type = request.headers.get("content-type", "")
+
+                if "form" in content_type:
+                    form = await request.form()
+                    method = form.get("_method", "").upper()
+
+                    # Reset the request body after reading form
+                    async def receive():
+                        return {"type": "http.request", "body": body, "more_body": False}
+
+                    request.scope["receive"] = receive
+
+            if method and method in ["PUT", "PATCH", "DELETE"]:
+                request.scope["method"] = method
+
+                # Update headers
+                headers = dict(request.headers)
+                headers[self.override_method_header.lower()] = method
+                request.scope["headers"] = Headers(headers).raw
+
+        response = await call_next(request)
+        return response
 
 
 class PyRailsApp(FastAPI):
@@ -20,6 +80,9 @@ class PyRailsApp(FastAPI):
         # Register exception handlers
         for exc_class, handler in exception_handlers.items():
             self.add_exception_handler(exc_class, handler)
+
+        # Add method override middleware by default
+        self.add_middleware(MethodOverrideMiddleware)
 
     def connect_db(self):
         for alias, db_config in self.config.DATABASES.items():

@@ -26,6 +26,12 @@ class Config:
             }
         }
 
+        self.ADMIN_PANEL_ENABLED = True
+        self.ADMIN_ROUTE_PREFIX = "/admin"
+        self.ADMIN_USERNAME = "admin"
+        self.ADMIN_PASSWORD = "admin"
+        self.ADMIN_SECRET = "admin_secret"
+
         self.FILE_STORAGE_BACKEND = "filesystem"
         self.FILE_SYSTEM_STORAGE_LOCATION = "./uploads"
         self.FILE_SYSTEM_BASE_URL = "/uploads/"

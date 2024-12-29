@@ -14,6 +14,12 @@ class HashedValue:
             plain_text.encode("utf-8"), self.hashed_value.encode("utf-8")
         )
 
+    def __repr__(self):
+        return f"<HashedValue: {self.hashed_value}>"
+
+    def __str__(self):
+        return self.hashed_value
+
 
 class HashedField(StringField):
     def __init__(self, *args, **kwargs):

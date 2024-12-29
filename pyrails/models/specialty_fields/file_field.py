@@ -188,6 +188,12 @@ class FileProxy:
     def open(self) -> BinaryIO:
         return self.storage.open(self.file_info.filename)
 
+    def __repr__(self):
+        return f"<FileProxy: {self.file_info.filename}>"
+
+    def __str__(self):
+        return self.storage.url(self.file_info.filename)
+
 
 class FileListProxy:
     """
@@ -458,16 +464,27 @@ class FileListField(BaseField):
         """
         if not value:
             return []
-        python_list = []
-        for item in value:
-            if not item:
-                python_list.append(None)
-                continue
-            if isinstance(item, dict):
-                python_list.append(item)
-            else:
-                raise ValueError("Unexpected item in file list")
-        return python_list
+
+        # Handle FastAPI UploadFile objects
+        if hasattr(value, 'file'):
+            return [value]  # Wrap single UploadFile in a list
+
+        # Handle list of UploadFiles from form-data
+        if isinstance(value, (list, tuple)):
+            python_list = []
+            for item in value:
+                if hasattr(item, 'file'):  # Handle UploadFile
+                    python_list.append(item)
+                elif isinstance(item, dict):  # Handle file info dict
+                    python_list.append(item)
+                elif item is None:
+                    python_list.append(None)
+                else:
+                    raise ValueError(f"Unexpected item type in file list: {type(item)}")
+            return python_list
+
+        # If it's a single item that's not a list/tuple/UploadFile, wrap it
+        return [value]
 
     def validate_file(self, file_obj: BinaryIO, filename: str) -> int:
         """
@@ -607,7 +624,13 @@ class FileField(BaseField):
         """
         if not value:
             return None
-        if "__placeholder_id" in value:
+
+        # Handle UploadFile objects
+        if hasattr(value, 'file'):
+            return value
+
+        # Handle placeholder dicts
+        if isinstance(value, dict) and "__placeholder_id" in value:
             return None
 
         file_info = FileInfo.from_dict(value)
