@@ -2,8 +2,6 @@ import json
 import os
 
 from fastapi import Form
-from jinja2 import Environment, FileSystemLoader
-from fastapi.templating import Jinja2Templates
 from dataclasses import dataclass
 import importlib
 import pkgutil
@@ -11,51 +9,12 @@ import inspect
 
 from starlette.responses import RedirectResponse
 
-from pyrails.controllers import Controller, get, post, put, delete
-from pyrails.exceptions import ValidationError
+from pyrails.controllers import Controller, get, post, put, delete, before_request
+from pyrails.exceptions import ValidationError, NotFoundError
 from pyrails import Request
 from pyrails.config import config
 from pyrails.models import BaseModel
-
-
-TEMPLATES_PATH = os.path.join(os.path.dirname(__file__), "templates")
-
-
-env = Environment(
-    loader=FileSystemLoader(TEMPLATES_PATH),
-)
-TEMPLATE_GLOBALS = {
-    # Basic built-ins
-    'len': len,
-    'min': min,
-    'max': max,
-    'sum': sum,
-    'abs': abs,
-    'round': round,
-    'enumerate': enumerate,
-    'range': range,
-    'zip': zip,
-
-    # Type conversion
-    'int': int,
-    'float': float,
-    'str': str,
-    'bool': bool,
-    'list': list,
-    'dict': dict,
-    'set': set,
-
-    # Other useful builtins
-    'all': all,
-    'any': any,
-    'sorted': sorted,
-    'filter': filter,
-    'map': map
-}
-env.globals.update(TEMPLATE_GLOBALS)
-
-templates = Jinja2Templates(directory=TEMPLATES_PATH)
-templates.env = env
+from pyrails.admin.templates import templates
 
 
 @dataclass
@@ -71,6 +30,13 @@ class AdminPanelController(Controller):
         super().__init__()
         self._discovered_models = {}
         self._discover_models()
+
+    @before_request
+    async def check_admin_auth(self, request: Request):
+        """Check if the user is authenticated as admin"""
+        admin_token = request.cookies.get("admin_token")
+        if not admin_token or admin_token != config.ADMIN_SECRET:
+            return RedirectResponse(f"/auth{config.ADMIN_PANEL_ROUTE_PREFIX}/login")
 
     def _discover_models(self):
         """Discover all models in the app/models directory that inherit from BaseModel"""
@@ -99,83 +65,21 @@ class AdminPanelController(Controller):
                         display_fields=display_fields
                     )
 
-    async def _check_admin_auth(self, request: Request) -> bool:
-        """Check if the user is authenticated as admin"""
-        admin_token = request.cookies.get("admin_token")
-        if not admin_token or admin_token != config.ADMIN_SECRET:
-            return False
-        return True
-
-    @get(f'{config.ADMIN_ROUTE_PREFIX}')
+    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}')
     async def admin_index(self, request: Request):
         """Admin dashboard showing available models"""
-        if not await self._check_admin_auth(request):
-            return RedirectResponse(f"/{config.ADMIN_ROUTE_PREFIX}/login")
-
         return templates.TemplateResponse(
             "index.html",
             {
                 "request": request,
                 "models": self._discovered_models,
-                "admin_route_prefix": config.ADMIN_ROUTE_PREFIX
+                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
             }
         )
 
-    @get(f'{config.ADMIN_ROUTE_PREFIX}/login')
-    async def admin_login_page(self, request: Request):
-        """Show admin login page"""
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": None}
-        )
-
-    @post(f'{config.ADMIN_ROUTE_PREFIX}/login')
-    async def admin_login(
-        self,
-        request: Request,
-        username: str = Form(...),
-        password: str = Form(...),
-    ):
-        """Handle admin login"""
-        if (username == config.ADMIN_USERNAME and
-                password == config.ADMIN_PASSWORD):
-            response = RedirectResponse(
-                f"{config.ADMIN_ROUTE_PREFIX}",
-                status_code=302
-            )
-            response.set_cookie(
-                "admin_token",
-                config.ADMIN_SECRET,
-                httponly=True,
-                secure=True,
-                samesite="lax"
-            )
-            return response
-
-        return templates.TemplateResponse(
-            "login.html",
-            {
-                "request": request,
-                "error": "Invalid credentials"
-            }
-        )
-
-    @delete(f'{config.ADMIN_ROUTE_PREFIX}/logout')
-    async def admin_logout(self, request: Request):
-        """Handle admin logout"""
-        response = RedirectResponse(
-            f"{config.ADMIN_ROUTE_PREFIX}/login",
-            status_code=302
-        )
-        response.delete_cookie("admin_token")
-        return response
-
-    @get(f'{config.ADMIN_ROUTE_PREFIX}/{{model_name}}')
+    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}')
     async def list_model(self, request: Request, model_name: str):
         """List all records for a model with pagination and search"""
-        if not await self._check_admin_auth(request):
-            return RedirectResponse(f"/{config.ADMIN_ROUTE_PREFIX}/login")
-
         model_info = self._discovered_models.get(model_name.lower())
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
@@ -216,7 +120,7 @@ class AdminPanelController(Controller):
                     "has_next": has_next,
                     "query": query_str,
                     "error": "",
-                    "admin_route_prefix": config.ADMIN_ROUTE_PREFIX
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
                 }
             )
         except Exception as e:
@@ -234,16 +138,13 @@ class AdminPanelController(Controller):
                     "has_next": False,
                     "query": query_str,
                     "error": f"Error executing query: {str(e)}",
-                    "admin_route_prefix": config.ADMIN_ROUTE_PREFIX
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
                 }
             )
 
-    @get(f'{config.ADMIN_ROUTE_PREFIX}/{{model_name}}/new')
+    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/new')
     async def new_model(self, request: Request, model_name: str):
         """Show form to create a new record"""
-        if not await self._check_admin_auth(request):
-            return RedirectResponse(f"/{config.ADMIN_ROUTE_PREFIX}/login")
-
         model_info = self._discovered_models.get(model_name.lower())
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
@@ -253,16 +154,13 @@ class AdminPanelController(Controller):
             {
                 "request": request,
                 "model_info": model_info,
-                "admin_route_prefix": config.ADMIN_ROUTE_PREFIX
+                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
             }
         )
 
-    @post(f'{config.ADMIN_ROUTE_PREFIX}/{{model_name}}')
+    @post(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}')
     async def create_model(self, request: Request, model_name: str):
         """Create a new record"""
-        if not await self._check_admin_auth(request):
-            return RedirectResponse(f"/{config.ADMIN_ROUTE_PREFIX}/login")
-
         model_info = self._discovered_models.get(model_name.lower())
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
@@ -271,61 +169,68 @@ class AdminPanelController(Controller):
         processed_data = {}
         file_fields = {}
 
-        # First pass: collect all file fields and their values
-        for field_name, value in form_data.items():
-            # Strip the '[]' suffix if present
-            clean_field_name = field_name.replace('[]', '')
+        try:
+            # First pass: collect all file fields and their values
+            for field_name, value in form_data.items():
+                clean_field_name = field_name.replace('[]', '')
+                field = model_info.fields.get(clean_field_name)
+                if field and field.__class__.__name__ in ['FileField', 'FileListField']:
+                    if clean_field_name not in file_fields:
+                        file_fields[clean_field_name] = []
+                    if hasattr(value, 'file'):
+                        file_fields[clean_field_name].append(value)
 
-            field = model_info.fields.get(clean_field_name)
-            if field and field.__class__.__name__ in ['FileField', 'FileListField']:
-                if clean_field_name not in file_fields:
-                    file_fields[clean_field_name] = []
-                if hasattr(value, 'file'):  # Check if it's a file object
-                    file_fields[clean_field_name].append(value)
+            # Process all form fields
+            for field_name, field in model_info.fields.items():
+                if field_name.startswith('_'):
+                    continue
 
-        # Process all form fields
-        for field_name, field in model_info.fields.items():
-            # Skip internal fields
-            if field_name.startswith('_'):
-                continue
-
-            # Handle file fields
-            if field.__class__.__name__ in ['FileField', 'FileListField']:
-                if field_name in file_fields:
-                    if field.__class__.__name__ == 'FileField':
-                        # For single file field, take the last file
-                        files = file_fields[field_name]
-                        if files:
-                            processed_data[field_name] = files[-1]
-                    else:
-                        # For file list field, use all files
-                        processed_data[field_name] = file_fields[field_name]
-
-            # Handle regular fields
-            else:
-                # Check both normal and array versions of the field name
-                value = form_data.get(field_name) or form_data.get(f"{field_name}[]")
-
-                if field.__class__.__name__ in ['DateTimeField', 'DateField']:
-                    if value and value != '':
+                if field.__class__.__name__ in ['FileField', 'FileListField']:
+                    if field_name in file_fields:
+                        if field.__class__.__name__ == 'FileField':
+                            files = file_fields[field_name]
+                            if files:
+                                processed_data[field_name] = files[-1]
+                        else:
+                            processed_data[field_name] = file_fields[field_name]
+                else:
+                    value = form_data.get(field_name) or form_data.get(f"{field_name}[]")
+                    if field.__class__.__name__ in ['DateTimeField', 'DateField']:
+                        if value and value != '':
+                            processed_data[field_name] = value
+                    elif value:
                         processed_data[field_name] = value
-                elif value:
-                    processed_data[field_name] = value
 
-        record = model_info.model_class(**processed_data)
-        record.save()
+            record = model_info.model_class(**processed_data)
+            record.save()
 
-        return RedirectResponse(
-            f"{config.ADMIN_ROUTE_PREFIX}/{model_name}",
-            status_code=302
-        )
+            return RedirectResponse(
+                f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}",
+                status_code=302
+            )
 
-    @get(f'{config.ADMIN_ROUTE_PREFIX}/{{model_name}}/{{id}}/edit')
+        except Exception as e:
+            # Return to the form with error message
+            error_message = str(e)
+            if "ValidationError" in error_message:
+                # Clean up MongoDB validation error message
+                error_message = error_message.split("ValidationError:", 1)[-1].strip()
+
+            return templates.TemplateResponse(
+                "new.html",
+                {
+                    "request": request,
+                    "model_info": model_info,
+                    "error": error_message,
+                    "form_data": processed_data,  # Pass back the processed data
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
+                },
+                status_code=400
+            )
+
+    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}/edit')
     async def edit_model(self, request: Request, model_name: str, id: str):
         """Show form to edit an existing record"""
-        if not await self._check_admin_auth(request):
-            return RedirectResponse(f"{config.ADMIN_ROUTE_PREFIX}/login")
-
         model_info = self._discovered_models.get(model_name.lower())
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
@@ -338,104 +243,99 @@ class AdminPanelController(Controller):
                 "request": request,
                 "model_info": model_info,
                 "record": record,
-                "admin_route_prefix": config.ADMIN_ROUTE_PREFIX
+                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
             }
         )
 
-    @put(f'{config.ADMIN_ROUTE_PREFIX}/{{model_name}}/{{id}}')
+    @put(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}')
     async def update_model(self, request: Request, model_name: str, id: str):
         """Update an existing record"""
-        if not await self._check_admin_auth(request):
-            return RedirectResponse(f"{config.ADMIN_ROUTE_PREFIX}/login")
-
         model_info = self._discovered_models.get(model_name.lower())
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
 
-        form_data = await request.form()
         record = model_info.model_class.objects.get(id=id)
+        if not record:
+            raise NotFoundError(f"Record with id {id} not found")
 
-        # Process all form fields
-        for field_name, field in model_info.fields.items():
-            if field_name.startswith('_'):
-                continue
+        try:
+            form_data = await request.form()
 
-            if field.__class__.__name__ in ['FileField', 'FileListField']:
-                # Handle file fields
-                is_multiple = field.__class__.__name__ == 'FileListField'
+            # Process all form fields
+            for field_name, field in model_info.fields.items():
+                if field_name.startswith('_'):
+                    continue
 
-                # Get any new file uploads - filter out empty uploads
-                if is_multiple:
+                if field.__class__.__name__ in ['FileField', 'FileListField']:
+                    is_multiple = field.__class__.__name__ == 'FileListField'
+
                     new_files = [
                         f for f in form_data.getlist(field_name)
                         if f and hasattr(f, 'file') and getattr(f, 'filename', '')
-                    ]
-                else:
-                    new_file = form_data.get(field_name)
-                    new_files = (
-                        [new_file]
-                        if new_file and hasattr(new_file, 'file') and getattr(new_file, 'filename', '')
-                        else []
-                    )
+                    ] if is_multiple else [f for f in [form_data.get(field_name)]
+                                           if f and hasattr(f, 'file') and getattr(f, 'filename', '')]
 
-                # Get deleted files
-                deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
-                deleted_files = [f for f in deleted_files if f]
+                    deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
+                    deleted_files = [f for f in deleted_files if f]
 
-                if is_multiple:
-                    # For FileListField, handle multiple files
-                    current_files = getattr(record, field_name) or []
+                    if is_multiple:
+                        current_files = getattr(record, field_name) or []
+                        current_files = [f for f in current_files if f.filename not in deleted_files]
+                        if new_files:
+                            current_files.extend(new_files)
+                        setattr(record, field_name, current_files)
+                    else:
+                        if deleted_files:
+                            setattr(record, field_name, None)
+                        elif new_files:
+                            setattr(record, field_name, new_files[0])
 
-                    # Remove deleted files
-                    current_files = [f for f in current_files if f.filename not in deleted_files]
-
-                    # Add new files
-                    if new_files:
-                        current_files.extend(new_files)
-
-                    setattr(record, field_name, current_files)
-                else:
-                    # For FileField, handle single file
-                    if deleted_files:
-                        setattr(record, field_name, None)
-                    elif new_files:  # Only set if we have actual new files
-                        setattr(record, field_name, new_files[0])
-
-            elif field.__class__.__name__ == 'BooleanField':
-                # Handle boolean fields
-                value = field_name in form_data
-                setattr(record, field_name, value)
-
-            elif field.__class__.__name__ in ['DateTimeField', 'DateField']:
-                # Handle date/time fields
-                value = form_data.get(field_name)
-                if value and value.strip():
+                elif field.__class__.__name__ == 'BooleanField':
+                    value = field_name in form_data
                     setattr(record, field_name, value)
 
-            else:
-                # Handle regular fields
-                value = form_data.get(field_name)
-                if value is not None:
-                    if field.__class__.__name__ == 'IntField':
-                        try:
-                            value = int(value) if value.strip() else None
-                        except ValueError:
-                            continue
-                    setattr(record, field_name, value)
+                elif field.__class__.__name__ in ['DateTimeField', 'DateField']:
+                    value = form_data.get(field_name)
+                    if value and value.strip():
+                        setattr(record, field_name, value)
 
-        record.save()
+                else:
+                    value = form_data.get(field_name)
+                    if value is not None:
+                        if field.__class__.__name__ == 'IntField':
+                            try:
+                                value = int(value) if value.strip() else None
+                            except ValueError:
+                                continue
+                        setattr(record, field_name, value)
 
-        return RedirectResponse(
-            f"{config.ADMIN_ROUTE_PREFIX}/{model_name}",
-            status_code=302
-        )
+            record.save()
 
-    @delete(f'{config.ADMIN_ROUTE_PREFIX}/{{model_name}}/{{id}}')
+            return RedirectResponse(
+                f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}",
+                status_code=302
+            )
+
+        except Exception as e:
+            error_message = str(e)
+            if "ValidationError" in error_message:
+                error_message = error_message.split("ValidationError:", 1)[-1].strip()
+
+            return templates.TemplateResponse(
+                "edit.html",
+                {
+                    "request": request,
+                    "model_info": model_info,
+                    "record": record,
+                    "error": error_message,
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
+                },
+                status_code=400
+            )
+
+    @delete(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}')
     async def delete_model(self, request: Request, model_name: str, id: str):
         """Delete a record"""
-        if not await self._check_admin_auth(request):
-            return RedirectResponse(f"/{config.ADMIN_ROUTE_PREFIX}/login")
-
         model_info = self._discovered_models.get(model_name.lower())
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
@@ -444,7 +344,7 @@ class AdminPanelController(Controller):
         record.delete()
 
         return RedirectResponse(
-            f"{config.ADMIN_ROUTE_PREFIX}/{model_name}",
+            f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}",
             status_code=302
         )
 

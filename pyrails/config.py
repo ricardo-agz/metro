@@ -27,7 +27,7 @@ class Config:
         }
 
         self.ADMIN_PANEL_ENABLED = True
-        self.ADMIN_ROUTE_PREFIX = "/admin"
+        self.ADMIN_PANEL_ROUTE_PREFIX = "/admin"
         self.ADMIN_USERNAME = "admin"
         self.ADMIN_PASSWORD = "admin"
         self.ADMIN_SECRET = "admin_secret"

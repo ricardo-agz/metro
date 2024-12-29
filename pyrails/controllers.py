@@ -227,9 +227,9 @@ class ControllerMeta(type):
                 try:
                     try:
                         # Execute before_request hooks
-                        await controller_instance._execute_hooks(
-                            "before_request", request
-                        )
+                        hook_response = await controller_instance._execute_hooks("before_request", request)
+                        if hook_response is not None:
+                            return hook_response
 
                         # Call the user-defined endpoint handler
                         response = await bound_method(
@@ -301,7 +301,10 @@ class Controller(metaclass=ControllerMeta):
         hooks = getattr(self.__class__, "_lifecycle_hooks", {}).get(hook_name, [])
         for hook in hooks:
             try:
-                await hook(self, obj)
+                result = await hook(self, obj)
+                # If a hook returns a response, return it immediately
+                if result is not None:
+                    return result
             except Exception as e:
                 logger.error(f"Error executing {hook_name} hook: {e}")
                 # Depending on the hook type, decide whether to continue or halt

@@ -3,10 +3,11 @@ from fastapi.routing import ASGIApp
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.datastructures import Headers
 from typing import Callable
-from .config import Config
+from .config import Config, config as app_config
 from .exceptions import exception_handlers
 from .db.connect_db import db_manager
 from .jobs.worker import PyRailsWorker
+from pyrails.admin import AdminPanelController, AdminPanelAuthController
 
 
 class MethodOverrideMiddleware(BaseHTTPMiddleware):
@@ -75,7 +76,7 @@ class PyRailsApp(FastAPI):
         super().__init__(**kwargs)
 
         # Load configuration
-        self.config = config or Config()
+        self.config = config or app_config
 
         # Register exception handlers
         for exc_class, handler in exception_handlers.items():
@@ -83,6 +84,11 @@ class PyRailsApp(FastAPI):
 
         # Add method override middleware by default
         self.add_middleware(MethodOverrideMiddleware)
+
+        # Enable admin panel if enabled
+        if self.config.ADMIN_PANEL_ENABLED:
+            self.include_controller(AdminPanelController)
+            self.include_controller(AdminPanelAuthController)
 
     def connect_db(self):
         for alias, db_config in self.config.DATABASES.items():
