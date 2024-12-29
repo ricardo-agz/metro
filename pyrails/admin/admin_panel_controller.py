@@ -226,9 +226,6 @@ class AdminPanelController(Controller):
 
                 processed_data[field_name] = value
 
-            print('processed_data:', processed_data)
-            print('file fields:', file_fields)
-
             record = model_info.model_class(**processed_data)
             record.save()
 
@@ -288,7 +285,6 @@ class AdminPanelController(Controller):
 
         try:
             form_data = await request.form()
-            print("form data:", form_data)
 
             for field_name, field in model_info.fields.items():
                 if field_name.startswith('_'):
@@ -320,13 +316,9 @@ class AdminPanelController(Controller):
                     deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
                     deleted_files = [f for f in deleted_files if f]
 
-                    print("deleted files:", deleted_files)
-                    print("file:", file)
-
                     if deleted_files:
                         setattr(record, field_name, None)
                     elif file and hasattr(file, 'file') and getattr(file, 'filename', ''):
-                        print("setting file for field:", field_name)
                         setattr(record, field_name, file)
 
                 elif isinstance(field, BooleanField):

@@ -375,6 +375,19 @@ Here you can set your `DATABASE_URL`, API keys, and other settings that vary bet
 
 ---
 
+## Admin Panel
+
+PyRails includes a built-in admin panel. You can view this at `/admin`
+
+You can disable this or change the admin route in the `config/development.py` or `config/production.py` file:
+
+```python
+ENABLE_ADMIN_PANEL = False
+ADMIN_PANEL_ROUTE_PREFIX = "/admin-panel"
+```
+
+---
+
 ## Documentation and Help
 
 - **API Documentation**: http://localhost:8000/docs
