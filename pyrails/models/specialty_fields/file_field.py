@@ -285,6 +285,19 @@ class FileListProxy:
         self._files = []
         self._update_document_data()
 
+    def remove_by_filename(self, filename: str):
+        """
+        Remove a single file by filename
+        """
+        for i, file_dict in enumerate(self._files):
+            if (file_dict and isinstance(file_dict, dict) and
+                    "filename" in file_dict and
+                    file_dict["filename"] == filename):
+                self._stage_delete(file_dict)
+                del self._files[i]
+                self._update_document_data()
+                break
+
     def _stage_upload(self, upload_obj):
         """
         Validate and stage a file, returning a unique placeholder dict.
@@ -348,22 +361,39 @@ class FileListProxy:
             raise ValueError("Unsupported file type for assignment")
 
     def _replace_slice(self, slice_idx, new_values):
-        old_slice = self._files[slice_idx]
-        for old_item in old_slice:
-            self._stage_delete(old_item)
-        del self._files[slice_idx]
+        start, stop, step = slice_idx.indices(len(self._files))
+        indices_to_replace = range(start, stop, step)
 
-        start = slice_idx.start or 0
-        for i, value in enumerate(new_values):
-            insert_pos = start + i
+        # Get the set of existing filenames that will be kept
+        new_filenames = set()
+        for value in new_values:
+            if hasattr(value, "file_info"):
+                new_filenames.add(value.file_info.filename)
+            elif isinstance(value, dict) and "filename" in value:
+                new_filenames.add(value["filename"])
+
+        # Only stage deletions for files that won't be in the new set
+        for i in indices_to_replace:
+            if i < len(self._files):
+                old_item = self._files[i]
+                if (old_item and isinstance(old_item, dict) and
+                        "filename" in old_item and
+                        old_item["filename"] not in new_filenames):
+                    self._stage_delete(old_item)
+
+        # Now replace the slice with new values
+        new_files = []
+        for value in new_values:
             if hasattr(value, "file"):
-                self._files.insert(insert_pos, self._stage_upload(value))
+                new_files.append(self._stage_upload(value))
             elif hasattr(value, "file_info"):
-                self._files.insert(insert_pos, value.file_info.to_dict())
+                new_files.append(value.file_info.to_dict())
             elif isinstance(value, dict):
-                self._files.insert(insert_pos, value)
+                new_files.append(value)
             else:
                 raise ValueError("Unsupported file type for slice assignment")
+
+        self._files[slice_idx] = new_files
 
     def _update_document_data(self):
         """

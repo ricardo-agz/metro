@@ -72,7 +72,9 @@
                                 </div>
                                 <div class="flex flex-col">
                                     <span class="text-sm font-medium text-gray-700">{{ file.filename }}</span>
-                                    <span class="text-xs text-gray-500">{{ (file.size / 1024 / 1024)|round(1) }} MB</span>
+                                    {% if file.size %}
+                                        <span class="text-xs text-gray-500">{{ (file.size / 1024 / 1024)|round(1) }} MB</span>
+                                    {% endif %}
                                 </div>
                             </div>
                             <button type="button" onclick="removeFile('{{ field_name }}', '{{ file.filename }}')"

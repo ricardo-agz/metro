@@ -282,64 +282,82 @@ class AdminPanelController(Controller):
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
 
+        # Get existing record before try block for error handling
         record = model_info.model_class.objects.get(id=id)
         if not record:
             raise NotFoundError(f"Record with id {id} not found")
 
         try:
             form_data = await request.form()
-            print('form_data:', form_data)
 
-            # Process all form fields
+            # First pass: handle file fields with proper [] handling for multi-files
             for field_name, field in model_info.fields.items():
-                if field_name.startswith('_'):
-                    continue
+                if isinstance(field, FileListField):
+                    # Get multi-file uploads with [] suffix
+                    files = form_data.getlist(f"{field_name}[]")
+                    valid_files = [f for f in files if hasattr(f, 'file') and getattr(f, 'filename', '')]
 
-                if field.__class__.__name__ in ['FileField', 'FileListField']:
-                    is_multiple = field.__class__.__name__ == 'FileListField'
-
-                    new_files = [
-                        f for f in form_data.getlist(field_name)
-                        if f and hasattr(f, 'file') and getattr(f, 'filename', '')
-                    ] if is_multiple else [f for f in [form_data.get(field_name)]
-                                           if f and hasattr(f, 'file') and getattr(f, 'filename', '')]
-
+                    # Get deleted files
                     deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
                     deleted_files = [f for f in deleted_files if f]
 
-                    if is_multiple:
-                        current_files = getattr(record, field_name) or []
-                        current_files = [f for f in current_files if f.filename not in deleted_files]
-                        if new_files:
-                            current_files.extend(new_files)
-                        setattr(record, field_name, current_files)
-                    else:
-                        if deleted_files:
-                            setattr(record, field_name, None)
-                        elif new_files:
-                            setattr(record, field_name, new_files[0])
+                    # Get the FileListProxy
+                    file_list = getattr(record, field_name)
 
-                elif field.__class__.__name__ == 'BooleanField':
-                    value = field_name in form_data
-                    setattr(record, field_name, value)
+                    # Remove deleted files
+                    if deleted_files:
+                        file_list[:] = [f for f in file_list if f and f.filename not in deleted_files]
 
-                elif field.__class__.__name__ in ['DateTimeField', 'DateField']:
-                    value = form_data.get(field_name)
+                    # Add new files
+                    if valid_files:
+                        file_list.extend(valid_files)
+
+                elif isinstance(field, FileField):
+                    # Single file handling
+                    file = form_data.get(field_name)
+                    deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
+                    deleted_files = [f for f in deleted_files if f]
+
+                    if deleted_files:
+                        setattr(record, field_name, None)
+                    elif file and hasattr(file, 'file') and getattr(file, 'filename', ''):
+                        setattr(record, field_name, file)
+
+            # Second pass: handle all other fields
+            for field_name, field in model_info.fields.items():
+                if field_name.startswith('_') or isinstance(field, (FileField, FileListField)):
+                    continue
+
+                if isinstance(field, BooleanField):
+                    setattr(record, field_name, field_name in form_data)
+                    continue
+
+                value = form_data.get(field_name)
+                if value is None:
+                    continue
+
+                if isinstance(field, DateTimeField):
                     if value and value.strip():
                         setattr(record, field_name, value)
-
+                elif isinstance(field, IntField):
+                    try:
+                        value = int(value.strip()) if value.strip() else None
+                        if value is not None:
+                            setattr(record, field_name, value)
+                    except ValueError:
+                        continue
+                elif isinstance(field, FloatField):
+                    try:
+                        value = float(value.strip()) if value.strip() else None
+                        if value is not None:
+                            setattr(record, field_name, value)
+                    except ValueError:
+                        continue
                 else:
-                    value = form_data.get(field_name)
-                    if value is not None:
-                        if field.__class__.__name__ == 'IntField':
-                            try:
-                                value = int(value) if value.strip() else None
-                            except ValueError:
-                                continue
-                        setattr(record, field_name, value)
+                    # String and other fields
+                    setattr(record, field_name, value)
 
             record.save()
-
             return RedirectResponse(
                 f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}",
                 status_code=302
