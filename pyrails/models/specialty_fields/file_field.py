@@ -586,11 +586,13 @@ class FileField(BaseField):
                     self.name, file_info.filename, self.storage
                 )
             instance._data[self.name] = None
+            instance._mark_as_changed(self.name)
             return
 
         # If it's a dict from the DB or from the code
         if isinstance(value, dict):
             instance._data[self.name] = value
+            instance._mark_as_changed(self.name)
             return
 
         # If it's an UploadFile
@@ -723,11 +725,13 @@ class FileHandlingMixin:
                     elif isinstance(field_obj, FileField):
                         # Single-file field: keep only the last staged file
                         fi = list_of_file_infos[-1]
-
-                        # We can directly set the field with a dict => triggers the
-                        # normal setter logic (which in this case is just a direct assign).
-                        setattr(self, field_name, fi.to_dict())
-
+                        # Create the complete file info dict with URL
+                        file_dict = fi.to_dict()
+                        file_dict["url"] = field_obj.storage.url(fi.filename)
+                        # Update the document data directly
+                        self._data[field_name] = file_dict
+                        # Mark as changed to ensure save
+                        self._mark_as_changed(field_name)
                         created_files.append((field_obj.storage, fi.filename))
 
             # Now call super() to actually save the doc in Mongo

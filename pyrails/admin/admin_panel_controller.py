@@ -282,16 +282,18 @@ class AdminPanelController(Controller):
         if not model_info:
             raise ValidationError(f"Model {model_name} not found")
 
-        # Get existing record before try block for error handling
         record = model_info.model_class.objects.get(id=id)
         if not record:
             raise NotFoundError(f"Record with id {id} not found")
 
         try:
             form_data = await request.form()
+            print("form data:", form_data)
 
-            # First pass: handle file fields with proper [] handling for multi-files
             for field_name, field in model_info.fields.items():
+                if field_name.startswith('_'):
+                    continue
+
                 if isinstance(field, FileListField):
                     # Get multi-file uploads with [] suffix
                     files = form_data.getlist(f"{field_name}[]")
@@ -318,44 +320,43 @@ class AdminPanelController(Controller):
                     deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
                     deleted_files = [f for f in deleted_files if f]
 
+                    print("deleted files:", deleted_files)
+                    print("file:", file)
+
                     if deleted_files:
                         setattr(record, field_name, None)
                     elif file and hasattr(file, 'file') and getattr(file, 'filename', ''):
+                        print("setting file for field:", field_name)
                         setattr(record, field_name, file)
 
-            # Second pass: handle all other fields
-            for field_name, field in model_info.fields.items():
-                if field_name.startswith('_') or isinstance(field, (FileField, FileListField)):
-                    continue
-
-                if isinstance(field, BooleanField):
+                elif isinstance(field, BooleanField):
                     setattr(record, field_name, field_name in form_data)
-                    continue
 
-                value = form_data.get(field_name)
-                if value is None:
-                    continue
-
-                if isinstance(field, DateTimeField):
-                    if value and value.strip():
-                        setattr(record, field_name, value)
-                elif isinstance(field, IntField):
-                    try:
-                        value = int(value.strip()) if value.strip() else None
-                        if value is not None:
-                            setattr(record, field_name, value)
-                    except ValueError:
-                        continue
-                elif isinstance(field, FloatField):
-                    try:
-                        value = float(value.strip()) if value.strip() else None
-                        if value is not None:
-                            setattr(record, field_name, value)
-                    except ValueError:
-                        continue
                 else:
-                    # String and other fields
-                    setattr(record, field_name, value)
+                    value = form_data.get(field_name)
+                    if value is None:
+                        continue
+
+                    if isinstance(field, DateTimeField):
+                        if value and value.strip():
+                            setattr(record, field_name, value)
+                    elif isinstance(field, IntField):
+                        try:
+                            value = int(value.strip()) if value.strip() else None
+                            if value is not None:
+                                setattr(record, field_name, value)
+                        except ValueError:
+                            continue
+                    elif isinstance(field, FloatField):
+                        try:
+                            value = float(value.strip()) if value.strip() else None
+                            if value is not None:
+                                setattr(record, field_name, value)
+                        except ValueError:
+                            continue
+                    else:
+                        # String and other fields
+                        setattr(record, field_name, value)
 
             record.save()
             return RedirectResponse(
