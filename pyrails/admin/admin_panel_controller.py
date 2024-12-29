@@ -13,7 +13,7 @@ from pyrails.controllers import Controller, get, post, put, delete, before_reque
 from pyrails.exceptions import ValidationError, NotFoundError
 from pyrails import Request
 from pyrails.config import config
-from pyrails.models import BaseModel
+from pyrails.models import BaseModel, FileListField, FileField, BooleanField, StringField, IntField, FloatField, DateTimeField
 from pyrails.admin.templates import templates
 
 
@@ -171,35 +171,63 @@ class AdminPanelController(Controller):
 
         try:
             # First pass: collect all file fields and their values
-            for field_name, value in form_data.items():
-                clean_field_name = field_name.replace('[]', '')
-                field = model_info.fields.get(clean_field_name)
-                if field and field.__class__.__name__ in ['FileField', 'FileListField']:
-                    if clean_field_name not in file_fields:
-                        file_fields[clean_field_name] = []
-                    if hasattr(value, 'file'):
-                        file_fields[clean_field_name].append(value)
+            for field_name, field in model_info.fields.items():
+                if isinstance(field, FileListField):
+                    # Get all files for this field using getlist
+                    files = form_data.getlist(f"{field_name}[]")
+                    valid_files = [f for f in files if hasattr(f, 'file') and getattr(f, 'filename', '')]
+                    if valid_files:
+                        file_fields[field_name] = valid_files
+                elif isinstance(field, FileField):
+                    file = form_data.get(field_name)
+                    if hasattr(file, 'file') and getattr(file, 'filename', ''):
+                        file_fields[field_name] = file
 
-            # Process all form fields
             for field_name, field in model_info.fields.items():
                 if field_name.startswith('_'):
                     continue
 
-                if field.__class__.__name__ in ['FileField', 'FileListField']:
+                if isinstance(field, (FileField, FileListField)):
                     if field_name in file_fields:
-                        if field.__class__.__name__ == 'FileField':
-                            files = file_fields[field_name]
-                            if files:
-                                processed_data[field_name] = files[-1]
-                        else:
-                            processed_data[field_name] = file_fields[field_name]
-                else:
-                    value = form_data.get(field_name) or form_data.get(f"{field_name}[]")
-                    if field.__class__.__name__ in ['DateTimeField', 'DateField']:
-                        if value and value != '':
-                            processed_data[field_name] = value
-                    elif value:
-                        processed_data[field_name] = value
+                        processed_data[field_name] = file_fields[field_name]
+                    continue
+
+                if isinstance(field, BooleanField):
+                    processed_data[field_name] = field_name in form_data
+                    continue
+
+                # Get raw value
+                value = form_data.get(field_name)
+                if value is None:
+                    continue
+
+                # Strip whitespace for non-string fields
+                if not isinstance(field, StringField):
+                    value = value.strip()
+                    if not value:
+                        continue
+
+                # Type conversion
+                if isinstance(field, (IntField, FloatField)):
+                    try:
+                        value = (
+                            int(value) if isinstance(field, IntField)
+                            else float(value)
+                        )
+                    except (ValueError, TypeError):
+                        raise ValidationError(
+                            f"Invalid {field.__class__.__name__} value for {field_name}"
+                        )
+
+                # Handle date/time fields
+                elif isinstance(field, DateTimeField):
+                    if not value:
+                        continue
+
+                processed_data[field_name] = value
+
+            print('processed_data:', processed_data)
+            print('file fields:', file_fields)
 
             record = model_info.model_class(**processed_data)
             record.save()
@@ -260,6 +288,7 @@ class AdminPanelController(Controller):
 
         try:
             form_data = await request.form()
+            print('form_data:', form_data)
 
             # Process all form fields
             for field_name, field in model_info.fields.items():

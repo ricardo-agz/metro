@@ -1,5 +1,7 @@
+{# edit.html #}
 {% extends "base.html" %}
 {% from "_form_fields.html" import render_form_fields, render_form_scripts %}
+{% from "_components.html" import error_banner %}
 
 {% block title %}Edit {{ model_info.name }}{% endblock %}
 
@@ -13,6 +15,10 @@
             Back to List
         </a>
     </div>
+
+    {% if error %}
+    {{ error_banner(error, "Error updating " ~ model_info.name) }}
+    {% endif %}
 
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <form method="POST"

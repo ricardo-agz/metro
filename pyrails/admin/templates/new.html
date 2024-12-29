@@ -1,5 +1,7 @@
+{# new.html #}
 {% extends "base.html" %}
 {% from "_form_fields.html" import render_form_fields, render_form_scripts %}
+{% from "_components.html" import error_banner %}
 
 {% block title %}New {{ model_info.name }}{% endblock %}
 
@@ -14,13 +16,17 @@
         </a>
     </div>
 
+    {% if error %}
+    {{ error_banner(error, "Error creating " ~ model_info.name) }}
+    {% endif %}
+
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <form method="POST"
               action="{{ admin_route_prefix }}/{{ model_info.name.lower() }}"
               enctype="multipart/form-data"
               class="divide-y divide-gray-200">
 
-            {{ render_form_fields(model_info, show_advanced=true) }}
+            {{ render_form_fields(model_info, form_data if form_data else None, show_advanced=true) }}
 
             <div class="px-6 py-4 bg-gray-50">
                 <div class="flex justify-end">

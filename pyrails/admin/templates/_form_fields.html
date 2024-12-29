@@ -167,7 +167,9 @@ function handleFileSelect(input, fieldName) {
     if (input.files.length === 0) {
         input.removeAttribute('name');  // Remove the name attribute so it won't be submitted
     } else {
-        input.setAttribute('name', fieldName);  // Restore the name attribute
+        // For FileListField, append [] to the name to indicate multiple values
+        const isMultiple = input.hasAttribute('multiple');
+        input.setAttribute('name', isMultiple ? `${fieldName}[]` : fieldName);
     }
 
     const files = Array.from(input.files).filter(f => f.name !== '');

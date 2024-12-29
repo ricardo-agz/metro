@@ -1,0 +1,19 @@
+{% macro error_banner(error, title='') %}
+    {% if error %}
+    <div class="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-circle text-red-400"></i>
+            </div>
+            <div class="ml-3">
+                {% if title %}
+                    <h3 class="text-sm font-medium text-red-800">{{ title }}</h3>
+                {% endif %}
+                <div class="mt-2 text-sm text-red-700">
+                    {{ error }}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endmacro %}
