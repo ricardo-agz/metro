@@ -227,7 +227,9 @@ class ControllerMeta(type):
                 try:
                     try:
                         # Execute before_request hooks
-                        hook_response = await controller_instance._execute_hooks("before_request", request)
+                        hook_response = await controller_instance._execute_hooks(
+                            "before_request", request
+                        )
                         if hook_response is not None:
                             return hook_response
 

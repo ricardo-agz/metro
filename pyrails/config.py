@@ -6,19 +6,25 @@ from dotenv import load_dotenv
 from pyrails.logger import logger
 
 
-load_dotenv()
-
-
 class Config:
     def __init__(self, env=None):
-        # Default configurations
+        # Initialize with basic ENV setting
         self.ENV = os.getenv("PYRAILS_ENV", "development")
-        self.APP_NAME = os.getenv("APP_NAME", "MyPyRailsApp")
-        self.DB_NAME = os.getenv("DATABASE_NAME", f"database_{self.ENV}")
-        self.DATABASE_URL = os.getenv("DATABASE_URL", "mongodb://localhost:27017")
-        self.DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
 
-        self.DATABASES: dict[str, dict[str, any]] = {
+        # Load configurations in order of precedence
+        self._load_default_config()
+        self._load_base_env()
+        self._load_environment_env()
+        self.load_environment_config()  # Python config files last
+
+    def _load_default_config(self):
+        """Load default configurations"""
+        self.APP_NAME = "MyPyRailsApp"
+        self.DB_NAME = f"database_{self.ENV}"
+        self.DATABASE_URL = "mongodb://localhost:27017"
+        self.DEBUG = False
+
+        self.DATABASES = {
             "default": {
                 "NAME": self.DB_NAME,
                 "URL": self.DATABASE_URL,
@@ -41,6 +47,39 @@ class Config:
         self.AWS_SECRET_ACCESS_KEY = ""
         self.AWS_REGION_NAME = ""
 
+    def _load_base_env(self):
+        """Load base .env file and set variables as attributes"""
+        # Load the base .env file
+        base_env_path = os.path.join(os.getcwd(), ".env")
+        if os.path.exists(base_env_path):
+            load_dotenv(base_env_path)
+            self._set_env_vars_as_attributes()
+        else:
+            logger.info("No base .env file found")
+
+    def _load_environment_env(self):
+        """Load environment-specific .env file and set variables as attributes"""
+        env_specific_path = os.path.join(os.getcwd(), f".env.{self.ENV}")
+        if os.path.exists(env_specific_path):
+            load_dotenv(env_specific_path, override=True)
+            self._set_env_vars_as_attributes()
+        else:
+            logger.info(f"No environment-specific .env.{self.ENV} file found")
+
+    def _set_env_vars_as_attributes(self):
+        """Set environment variables as attributes of the config object"""
+        for key, value in os.environ.items():
+            if key.isupper():  # Only set uppercase variables as config attributes
+                # Convert common string values to appropriate types
+                if value.lower() in ("true", "false"):
+                    value = value.lower() == "true"
+                elif value.isdigit():
+                    value = int(value)
+                elif value.replace(".", "", 1).isdigit() and value.count(".") < 2:
+                    value = float(value)
+
+                setattr(self, key, value)
+
     def load_from_module(self, module):
         """Load configuration from a given module."""
         for key in dir(module):
@@ -49,27 +88,22 @@ class Config:
 
     def load_environment_config(self):
         """Dynamically load the environment-specific configuration."""
-        env = self.ENV
         try:
-            # Get the current working directory (where the script is run from)
             cwd = os.getcwd()
+            config_path = os.path.join(cwd, "config", f"{self.ENV}.py")
 
-            # Construct the path to the config file
-            config_path = os.path.join(cwd, "config", f"{env}.py")
-
-            # Check if the file exists
             if not os.path.exists(config_path):
-                logger.debug(
-                    f"Configuration file for environment '{env}' not found at {config_path}. Using default configuration."
+                logger.warn(
+                    f"Configuration file for environment '{self.ENV}' not found at {config_path}."
                 )
                 return
 
-            # Load the module from the file path
-            spec = importlib.util.spec_from_file_location(f"config.{env}", config_path)
+            spec = importlib.util.spec_from_file_location(
+                f"config.{self.ENV}", config_path
+            )
             config_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(config_module)
 
-            # Load configurations from the module
             self.load_from_module(config_module)
         except Exception as e:
             logger.error(f"Error loading configuration: {str(e)}")
@@ -81,11 +115,15 @@ class Config:
     ):
         self.DATABASES[alias] = {"NAME": name, "URL": url, "SSL": ssl, **kwargs}
 
+    def to_dict(self):
+        return {
+            key: value for key, value in vars(self).items() if not key.startswith("_")
+        }
+
 
 def get_config():
     """Initialize and load the configuration."""
     config = Config()
-    config.load_environment_config()
     return config
 
 

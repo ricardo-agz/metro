@@ -1,161 +1,17 @@
-import importlib.util
 import os
-import abc
 from pathlib import Path
-import requests
 from typing import List, Optional
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
+
+from pyrails.communications.providers import (
+    EmailProvider,
+    MailgunProvider,
+    TwilioProvider,
+)
+from pyrails.communications.providers.aws import AWSESProvider
+from pyrails.communications.providers.base import ProviderNotConfiguredError
 from pyrails.logger import logger
-import httpx
-
-
-# Try to import boto3, set a flag if it fails
-try:
-    import boto3
-
-    BOTO3_AVAILABLE = True
-except ImportError:
-    BOTO3_AVAILABLE = False
-
-try:
-    import aioboto3
-
-    AIOBOTO3_AVAILABLE = True
-except ImportError:
-    AIOBOTO3_AVAILABLE = False
-
-
-class EmailProvider(abc.ABC):
-    @abc.abstractmethod
-    def send_email(self, source: str, recipients: List[str], subject: str, body: str):
-        """
-        Synchronously send an email.
-        """
-        pass
-
-    @abc.abstractmethod
-    async def send_email_async(
-        self, source: str, recipients: List[str], subject: str, body: str
-    ):
-        """
-        Asynchronously send an email.
-        """
-        pass
-
-
-class MailgunProvider(EmailProvider):
-    def __init__(self, domain: str = None, api_key: str = None):
-        self.domain = domain or os.getenv("MAILGUN_DOMAIN")
-        self.api_key = api_key or os.getenv("MAILGUN_API_KEY")
-
-    def send_email(self, source: str, recipients: list[str], subject: str, body: str):
-        response = requests.post(
-            f"https://api.mailgun.net/v3/{self.domain}/messages",
-            auth=("api", self.api_key),
-            data={
-                "from": source,
-                "to": recipients,
-                "subject": subject,
-                "html": body,
-            },
-        )
-        if response.status_code != 200:
-            logger.error(f"Mailgun API error: {response.status_code} - {response.text}")
-            response.raise_for_status()
-        logger.info(f"Email sent via Mailgun to {recipients} with subject '{subject}'.")
-
-    async def send_email_async(
-        self, source: str, recipients: List[str], subject: str, body: str
-    ):
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.mailgun.net/v3/{self.domain}/messages",
-                auth=("api", self.api_key),
-                data={
-                    "from": source,
-                    "to": recipients,
-                    "subject": subject,
-                    "html": body,
-                },
-            )
-            if response.status_code != 200:
-                logger.error(
-                    f"Mailgun API async error: {response.status_code} - {response.text}"
-                )
-                response.raise_for_status()
-            logger.info(
-                f"Email sent via Mailgun (async) to {recipients} with subject '{subject}'."
-            )
-
-
-class AWSESProvider(EmailProvider):
-    def __init__(self, region_name: str = "us-west-2"):
-        if not BOTO3_AVAILABLE:
-            raise ImportError(
-                "boto3 is required for AWSESProvider but is not installed."
-            )
-        self.region_name = region_name
-        self.client = boto3.client("ses", region_name=region_name)
-
-    def send_email(self, source: str, recipients: List[str], subject: str, body: str):
-        try:
-            response = self.client.send_email(
-                Source=source,
-                Destination={"ToAddresses": recipients},
-                Message={
-                    "Subject": {"Data": subject},
-                    "Body": {"Html": {"Data": body}},
-                },
-            )
-            logger.info(
-                f"Email sent via AWS SES to {recipients} with subject '{subject}'. Message ID: {response['MessageId']}"
-            )
-        except Exception as e:
-            logger.error(f"AWS SES error: {e}")
-            raise
-
-    async def send_email_async(
-        self, source: str, recipients: List[str], subject: str, body: str
-    ):
-        if not AIOBOTO3_AVAILABLE:
-            raise ImportError(
-                "aioboto3 is required for async AWSESProvider but is not installed."
-            )
-        session = aioboto3.Session()
-        async with session.client("ses", region_name=self.region_name) as client:
-            try:
-                response = await client.send_email(
-                    Source=source,
-                    Destination={"ToAddresses": recipients},
-                    Message={
-                        "Subject": {"Data": subject},
-                        "Body": {"Html": {"Data": body}},
-                    },
-                )
-                logger.info(
-                    f"Email sent via AWS SES (async) to {recipients} with subject '{subject}'. Message ID: {response['MessageId']}"
-                )
-            except Exception as e:
-                logger.error(f"AWS SES async error: {e}")
-                raise
-
-
-def _get_application_root() -> Path:
-    """
-    Determines the root directory of the user's application.
-
-    :return: Path object representing the application root.
-    """
-    try:
-        # Attempt to get the path of the main module
-        main_spec = importlib.util.find_spec("__main__")
-        if main_spec and main_spec.origin:
-            return Path(main_spec.origin).resolve().parent
-    except Exception as e:
-        logger.warning(f"Failed to determine application root: {e}")
-
-    # Fallback to current working directory
-    return Path.cwd()
+from pyrails.config import config
 
 
 class EmailSender:
@@ -183,23 +39,38 @@ class EmailSender:
             logger.debug("Using provided EmailProvider.")
             return provider
 
-        # Determine provider based on environment variables
-        mailgun_domain = os.getenv("MAILGUN_DOMAIN")
-        mailgun_api_key = os.getenv("MAILGUN_API_KEY")
-        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        mailgun_configured = hasattr(config, "MAILGUN_DOMAIN") and hasattr(
+            config, "MAILGUN_API_KEY"
+        )
+        aws_configured = hasattr(config, "AWS_ACCESS_KEY_ID") and hasattr(
+            config, "AWS_SECRET_ACCESS_KEY"
+        )
+        twilio_configured = hasattr(config, "TWILIO_ACCOUNT_SID") and hasattr(
+            config, "TWILIO_AUTH_TOKEN"
+        )
 
-        if mailgun_domain and mailgun_api_key:
-            logger.info("Configuring MailgunProvider based on environment variables.")
-            return MailgunProvider()
-        elif aws_access_key and aws_secret_key:
-            logger.info("Configuring AWSESProvider based on environment variables.")
+        if mailgun_configured:
+            mailgun_domain = config.MAILGUN_DOMAIN
+            mailgun_api_key = config.MAILGUN_API_KEY
+            logger.info("Configuring MailgunProvider based on config.")
+            return MailgunProvider(domain=mailgun_domain, api_key=mailgun_api_key)
+        elif aws_configured:
+            aws_access_key = config.AWS_ACCESS_KEY_ID
+            aws_secret_key = config.AWS_SECRET_ACCESS_KEY
+            logger.info("Configuring AWSESProvider based on config.")
             return AWSESProvider()
+        elif twilio_configured:
+            twilio_account_sid = config.TWILIO_ACCOUNT_SID
+            twilio_auth_token = config.TWILIO_AUTH_TOKEN
+            logger.info("Configuring TwilioProvider based on config.")
+            return TwilioProvider(
+                account_sid=twilio_account_sid, auth_token=twilio_auth_token
+            )
         else:
             logger.error(
                 "No email provider configured. Please set Mailgun or AWS SES environment variables."
             )
-            raise ValueError(
+            raise ProviderNotConfiguredError(
                 "No email provider configured. Please set Mailgun or AWS SES environment variables."
             )
 
@@ -374,27 +245,46 @@ class EmailSender:
 # Usage example:
 if __name__ == "__main__":
     # For Mailgun
-    mailgun_provider = MailgunProvider(
-        domain=os.getenv("MAILGUN_DOMAIN"), api_key=os.getenv("MAILGUN_API_KEY")
-    )
-    mailgun_sender = EmailSender(provider=mailgun_provider)
+    # mailgun_provider = MailgunProvider(
+    #     domain=os.getenv("MAILGUN_DOMAIN"), api_key=os.getenv("MAILGUN_API_KEY")
+    # )
+    # mailgun_sender = EmailSender(provider=mailgun_provider)
 
     # For AWS SES
-    ses_provider = AWSESProvider(region_name="us-west-2")
-    ses_sender = EmailSender(provider=ses_provider)
+    # ses_provider = AWSESProvider(region_name="us-west-2")
+    # ses_sender = EmailSender(provider=ses_provider)
 
-    # Using Mailgun
-    mailgun_sender.send_email(
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    # Twilio
+    twilio_provider = TwilioProvider(
+        account_sid=os.getenv("TWILIO_ACCOUNT_SID"),
+        auth_token=os.getenv("TWILIO_AUTH_TOKEN"),
+    )
+    twilio_sender = EmailSender(provider=twilio_provider, templates_dir="/")
+
+    # send email w twilio
+    twilio_sender.send_email(
         source="sender@example.com",
-        recipients=["recipient@example.com"],
+        recipients=["ricardo@neutrinoapp.com"],
         subject="Test Email",
-        body="This is a test email sent using Mailgun.",
+        body="This is a test email sent using Twilio.",
     )
 
-    # Using AWS SES
-    ses_sender.send_email(
-        source="sender@example.com",
-        recipients=["recipient@example.com"],
-        subject="Test Email",
-        body="This is a test email sent using AWS SES.",
-    )
+    # # Using Mailgun
+    # mailgun_sender.send_email(
+    #     source="sender@example.com",
+    #     recipients=["recipient@example.com"],
+    #     subject="Test Email",
+    #     body="This is a test email sent using Mailgun.",
+    # )
+    #
+    # # Using AWS SES
+    # ses_sender.send_email(
+    #     source="sender@example.com",
+    #     recipients=["recipient@example.com"],
+    #     subject="Test Email",
+    #     body="This is a test email sent using AWS SES.",
+    # )

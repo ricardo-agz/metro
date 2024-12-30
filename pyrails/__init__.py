@@ -12,9 +12,7 @@ from pyrails.admin import AdminPanelController, AdminPanelAuthController
 
 class MethodOverrideMiddleware(BaseHTTPMiddleware):
     def __init__(
-            self,
-            app: ASGIApp,
-            override_method_header: str = "X-HTTP-Method-Override"
+        self, app: ASGIApp, override_method_header: str = "X-HTTP-Method-Override"
     ):
         super().__init__(app)
         self.override_method_header = override_method_header
@@ -25,8 +23,11 @@ class MethodOverrideMiddleware(BaseHTTPMiddleware):
         # Only check for method override if we have a _method field in the form
         # or the override header is present
         if request.headers.get(self.override_method_header) or (
-                request.method == "POST" and
-                any(h[0].decode() == "content-type" and b"form" in h[1] for h in request.scope["headers"])
+            request.method == "POST"
+            and any(
+                h[0].decode() == "content-type" and b"form" in h[1]
+                for h in request.scope["headers"]
+            )
         ):
             # Create a buffer for the body
             body = await request.body()
@@ -50,7 +51,11 @@ class MethodOverrideMiddleware(BaseHTTPMiddleware):
 
                     # Reset the request body after reading form
                     async def receive():
-                        return {"type": "http.request", "body": body, "more_body": False}
+                        return {
+                            "type": "http.request",
+                            "body": body,
+                            "more_body": False,
+                        }
 
                     request.scope["receive"] = receive
 

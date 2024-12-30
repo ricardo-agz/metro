@@ -83,7 +83,13 @@ class FileHandler:
         self.placeholders: dict[str, tuple[str, StorageOperation]] = {}
         self._committed = False
 
-    def stage_upload(self, field_name: str, operation: StorageOperation, storage: StorageBackend, placeholder_id: str):
+    def stage_upload(
+        self,
+        field_name: str,
+        operation: StorageOperation,
+        storage: StorageBackend,
+        placeholder_id: str,
+    ):
         """Stage a file for upload and track it by placeholder_id."""
         operation.storage = storage
         self.pending_uploads[field_name].append(operation)
@@ -121,7 +127,9 @@ class FileHandler:
             for field_name, operations in self.pending_uploads.items():
                 new_file_infos = []
                 for op in operations:
-                    new_filename = f"{document_id}_{uuid.uuid4().hex}_{op.original_filename}"
+                    new_filename = (
+                        f"{document_id}_{uuid.uuid4().hex}_{op.original_filename}"
+                    )
                     op.storage.save(new_filename, op.file_obj)
                     op.stored_filename = new_filename
                     uploaded_files.append((op.storage, new_filename))
@@ -157,7 +165,9 @@ class FileHandler:
             try:
                 storage.delete(filename)
             except Exception as ex:
-                logger.error(f"FileHandler cleanup deletion error for '{filename}': {ex}")
+                logger.error(
+                    f"FileHandler cleanup deletion error for '{filename}': {ex}"
+                )
 
 
 class FileProxy:
@@ -290,9 +300,12 @@ class FileListProxy:
         Remove a single file by filename
         """
         for i, file_dict in enumerate(self._files):
-            if (file_dict and isinstance(file_dict, dict) and
-                    "filename" in file_dict and
-                    file_dict["filename"] == filename):
+            if (
+                file_dict
+                and isinstance(file_dict, dict)
+                and "filename" in file_dict
+                and file_dict["filename"] == filename
+            ):
                 self._stage_delete(file_dict)
                 del self._files[i]
                 self._update_document_data()
@@ -308,7 +321,9 @@ class FileListProxy:
             field_name=self.field_name,
             file_obj=upload_obj.file,
             original_filename=upload_obj.filename,
-            content_type=getattr(upload_obj, "content_type", "application/octet-stream"),
+            content_type=getattr(
+                upload_obj, "content_type", "application/octet-stream"
+            ),
             size=size,
         )
 
@@ -326,7 +341,11 @@ class FileListProxy:
         """
         If file_dict is a placeholder, remove its upload operation from the queue.
         """
-        if file_dict and isinstance(file_dict, dict) and "__placeholder_id" in file_dict:
+        if (
+            file_dict
+            and isinstance(file_dict, dict)
+            and "__placeholder_id" in file_dict
+        ):
             placeholder_id = file_dict["__placeholder_id"]
             self.instance._file_handler.cancel_upload(placeholder_id)
 
@@ -376,9 +395,12 @@ class FileListProxy:
         for i in indices_to_replace:
             if i < len(self._files):
                 old_item = self._files[i]
-                if (old_item and isinstance(old_item, dict) and
-                        "filename" in old_item and
-                        old_item["filename"] not in new_filenames):
+                if (
+                    old_item
+                    and isinstance(old_item, dict)
+                    and "filename" in old_item
+                    and old_item["filename"] not in new_filenames
+                ):
                     self._stage_delete(old_item)
 
         # Now replace the slice with new values
@@ -432,10 +454,7 @@ class FileListField(BaseField):
             instance._data[self.name] = value
 
         return FileListProxy(
-            instance=instance,
-            field_name=self.name,
-            field=self,
-            initial_value=value
+            instance=instance, field_name=self.name, field=self, initial_value=value
         )
 
     def __set__(self, instance, value):
@@ -496,14 +515,14 @@ class FileListField(BaseField):
             return []
 
         # Handle FastAPI UploadFile objects
-        if hasattr(value, 'file'):
+        if hasattr(value, "file"):
             return [value]  # Wrap single UploadFile in a list
 
         # Handle list of UploadFiles from form-data
         if isinstance(value, (list, tuple)):
             python_list = []
             for item in value:
-                if hasattr(item, 'file'):  # Handle UploadFile
+                if hasattr(item, "file"):  # Handle UploadFile
                     python_list.append(item)
                 elif isinstance(item, dict):  # Handle file info dict
                     python_list.append(item)
@@ -601,7 +620,9 @@ class FileField(BaseField):
             current = instance._data.get(self.name)
             if current and isinstance(current, dict) and "filename" in current:
                 old_info = FileInfo.from_dict(current)
-                instance._file_handler.stage_deletion(self.name, old_info.filename, self.storage)
+                instance._file_handler.stage_deletion(
+                    self.name, old_info.filename, self.storage
+                )
 
             operation = StorageOperation(
                 field_name=self.name,
@@ -658,7 +679,7 @@ class FileField(BaseField):
             return None
 
         # Handle UploadFile objects
-        if hasattr(value, 'file'):
+        if hasattr(value, "file"):
             return value
 
         # Handle placeholder dicts

@@ -85,9 +85,7 @@ class BaseModelLogic:
             if isinstance(d, (Document, EmbeddedDocument)):
                 d = d.to_mongo().to_dict()
             return {
-                k: _handle_value(v)
-                for k, v in d.items()
-                if k not in exclude_fields
+                k: _handle_value(v) for k, v in d.items() if k not in exclude_fields
             }
 
         try:
@@ -158,9 +156,7 @@ class BaseModelLogic:
         return cls.find(include_deleted=True, page=page, per_page=per_page, **kwargs)
 
     @classmethod
-    def find_by_id_and_update(
-        cls, id: str | ObjectId, **updates
-    ) -> Optional[T]:
+    def find_by_id_and_update(cls, id: str | ObjectId, **updates) -> Optional[T]:
         """
         Atomically updates a document by ID and returns the updated document.
 

@@ -334,6 +334,34 @@ mailgun_sender.send_email(
 
 ---
 
+## SMS Sending
+Easily send SMS messages using the built-in `SMSSender` class, which supports multiple SMS providers like Twilio and Vonage.
+
+1. Add the provider credentials to the environment variables or config file:
+```
+# For Twilio
+TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXX
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_PHONE_NUMBER=+1234567890
+
+# For Vonage
+VONAEG_API_KEY=your_api_key
+VONAGE_API_SECRET=your_api_secret
+VONAGE_PHONE_NUMBER=+1234567890
+```
+
+2. Send an SMS message:
+```python
+sms_sender = SMSSender()  # provider will be automatically detected based on environment variables but can also be specified explicitly
+
+sms_sender.send_sms(
+    source="+1234567890",
+    recipients=["+1234567891"],
+    message="This is a test SMS message!",
+)
+```
+---
+
 ## Database Management
 
 PyRails provides commands to manage your MongoDB database.

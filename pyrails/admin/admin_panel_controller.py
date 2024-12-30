@@ -13,7 +13,16 @@ from pyrails.controllers import Controller, get, post, put, delete, before_reque
 from pyrails.exceptions import ValidationError, NotFoundError
 from pyrails import Request
 from pyrails.config import config
-from pyrails.models import BaseModel, FileListField, FileField, BooleanField, StringField, IntField, FloatField, DateTimeField
+from pyrails.models import (
+    BaseModel,
+    FileListField,
+    FileField,
+    BooleanField,
+    StringField,
+    IntField,
+    FloatField,
+    DateTimeField,
+)
 from pyrails.admin.templates import templates
 
 
@@ -46,15 +55,17 @@ class AdminPanelController(Controller):
             module = importlib.import_module(f"app.models.{module_info.name}")
 
             for name, obj in inspect.getmembers(module):
-                if (inspect.isclass(obj) and
-                        issubclass(obj, BaseModel) and
-                        obj != BaseModel):
+                if (
+                    inspect.isclass(obj)
+                    and issubclass(obj, BaseModel)
+                    and obj != BaseModel
+                ):
 
                     fields = {}
                     display_fields = []
 
                     for field_name, field in obj._fields.items():
-                        if not field_name.startswith('_'):
+                        if not field_name.startswith("_"):
                             fields[field_name] = field
                             display_fields.append((field_name, field))
 
@@ -62,10 +73,10 @@ class AdminPanelController(Controller):
                         name=name,
                         model_class=obj,
                         fields=fields,
-                        display_fields=display_fields
+                        display_fields=display_fields,
                     )
 
-    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}')
+    @get(f"{config.ADMIN_PANEL_ROUTE_PREFIX}")
     async def admin_index(self, request: Request):
         """Admin dashboard showing available models"""
         return templates.TemplateResponse(
@@ -73,11 +84,11 @@ class AdminPanelController(Controller):
             {
                 "request": request,
                 "models": self._discovered_models,
-                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
-            }
+                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX,
+            },
         )
 
-    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}')
+    @get(f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}")
     async def list_model(self, request: Request, model_name: str):
         """List all records for a model with pagination and search"""
         model_info = self._discovered_models.get(model_name.lower())
@@ -86,9 +97,9 @@ class AdminPanelController(Controller):
 
         # Get query parameters
         query_params = request.query_params
-        page = int(query_params.get('page', 1))
-        per_page = int(query_params.get('per_page', 10))
-        query_str = query_params.get('query', '').strip()
+        page = int(query_params.get("page", 1))
+        per_page = int(query_params.get("per_page", 10))
+        query_str = query_params.get("query", "").strip()
 
         try:
             # Get total count and records
@@ -120,8 +131,8 @@ class AdminPanelController(Controller):
                     "has_next": has_next,
                     "query": query_str,
                     "error": "",
-                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
-                }
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX,
+                },
             )
         except Exception as e:
             # Handle any other errors (database errors, etc)
@@ -138,11 +149,11 @@ class AdminPanelController(Controller):
                     "has_next": False,
                     "query": query_str,
                     "error": f"Error executing query: {str(e)}",
-                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
-                }
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX,
+                },
             )
 
-    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/new')
+    @get(f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/new")
     async def new_model(self, request: Request, model_name: str):
         """Show form to create a new record"""
         model_info = self._discovered_models.get(model_name.lower())
@@ -154,11 +165,11 @@ class AdminPanelController(Controller):
             {
                 "request": request,
                 "model_info": model_info,
-                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
-            }
+                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX,
+            },
         )
 
-    @post(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}')
+    @post(f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}")
     async def create_model(self, request: Request, model_name: str):
         """Create a new record"""
         model_info = self._discovered_models.get(model_name.lower())
@@ -175,16 +186,20 @@ class AdminPanelController(Controller):
                 if isinstance(field, FileListField):
                     # Get all files for this field using getlist
                     files = form_data.getlist(f"{field_name}[]")
-                    valid_files = [f for f in files if hasattr(f, 'file') and getattr(f, 'filename', '')]
+                    valid_files = [
+                        f
+                        for f in files
+                        if hasattr(f, "file") and getattr(f, "filename", "")
+                    ]
                     if valid_files:
                         file_fields[field_name] = valid_files
                 elif isinstance(field, FileField):
                     file = form_data.get(field_name)
-                    if hasattr(file, 'file') and getattr(file, 'filename', ''):
+                    if hasattr(file, "file") and getattr(file, "filename", ""):
                         file_fields[field_name] = file
 
             for field_name, field in model_info.fields.items():
-                if field_name.startswith('_'):
+                if field_name.startswith("_"):
                     continue
 
                 if isinstance(field, (FileField, FileListField)):
@@ -211,8 +226,7 @@ class AdminPanelController(Controller):
                 if isinstance(field, (IntField, FloatField)):
                     try:
                         value = (
-                            int(value) if isinstance(field, IntField)
-                            else float(value)
+                            int(value) if isinstance(field, IntField) else float(value)
                         )
                     except (ValueError, TypeError):
                         raise ValidationError(
@@ -230,8 +244,7 @@ class AdminPanelController(Controller):
             record.save()
 
             return RedirectResponse(
-                f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}",
-                status_code=302
+                f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}", status_code=302
             )
 
         except Exception as e:
@@ -248,12 +261,12 @@ class AdminPanelController(Controller):
                     "model_info": model_info,
                     "error": error_message,
                     "form_data": processed_data,  # Pass back the processed data
-                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX,
                 },
-                status_code=400
+                status_code=400,
             )
 
-    @get(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}/edit')
+    @get(f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}/edit")
     async def edit_model(self, request: Request, model_name: str, id: str):
         """Show form to edit an existing record"""
         model_info = self._discovered_models.get(model_name.lower())
@@ -268,11 +281,11 @@ class AdminPanelController(Controller):
                 "request": request,
                 "model_info": model_info,
                 "record": record,
-                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
-            }
+                "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX,
+            },
         )
 
-    @put(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}')
+    @put(f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}")
     async def update_model(self, request: Request, model_name: str, id: str):
         """Update an existing record"""
         model_info = self._discovered_models.get(model_name.lower())
@@ -287,16 +300,22 @@ class AdminPanelController(Controller):
             form_data = await request.form()
 
             for field_name, field in model_info.fields.items():
-                if field_name.startswith('_'):
+                if field_name.startswith("_"):
                     continue
 
                 if isinstance(field, FileListField):
                     # Get multi-file uploads with [] suffix
                     files = form_data.getlist(f"{field_name}[]")
-                    valid_files = [f for f in files if hasattr(f, 'file') and getattr(f, 'filename', '')]
+                    valid_files = [
+                        f
+                        for f in files
+                        if hasattr(f, "file") and getattr(f, "filename", "")
+                    ]
 
                     # Get deleted files
-                    deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
+                    deleted_files = form_data.get(f"{field_name}_deleted", "").split(
+                        ","
+                    )
                     deleted_files = [f for f in deleted_files if f]
 
                     # Get the FileListProxy
@@ -304,7 +323,11 @@ class AdminPanelController(Controller):
 
                     # Remove deleted files
                     if deleted_files:
-                        file_list[:] = [f for f in file_list if f and f.filename not in deleted_files]
+                        file_list[:] = [
+                            f
+                            for f in file_list
+                            if f and f.filename not in deleted_files
+                        ]
 
                     # Add new files
                     if valid_files:
@@ -313,12 +336,16 @@ class AdminPanelController(Controller):
                 elif isinstance(field, FileField):
                     # Single file handling
                     file = form_data.get(field_name)
-                    deleted_files = form_data.get(f"{field_name}_deleted", "").split(',')
+                    deleted_files = form_data.get(f"{field_name}_deleted", "").split(
+                        ","
+                    )
                     deleted_files = [f for f in deleted_files if f]
 
                     if deleted_files:
                         setattr(record, field_name, None)
-                    elif file and hasattr(file, 'file') and getattr(file, 'filename', ''):
+                    elif (
+                        file and hasattr(file, "file") and getattr(file, "filename", "")
+                    ):
                         setattr(record, field_name, file)
 
                 elif isinstance(field, BooleanField):
@@ -352,8 +379,7 @@ class AdminPanelController(Controller):
 
             record.save()
             return RedirectResponse(
-                f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}",
-                status_code=302
+                f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}", status_code=302
             )
 
         except Exception as e:
@@ -368,12 +394,12 @@ class AdminPanelController(Controller):
                     "model_info": model_info,
                     "record": record,
                     "error": error_message,
-                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX
+                    "admin_route_prefix": config.ADMIN_PANEL_ROUTE_PREFIX,
                 },
-                status_code=400
+                status_code=400,
             )
 
-    @delete(f'{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}')
+    @delete(f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{{model_name}}/{{id}}")
     async def delete_model(self, request: Request, model_name: str, id: str):
         """Delete a record"""
         model_info = self._discovered_models.get(model_name.lower())
@@ -384,7 +410,5 @@ class AdminPanelController(Controller):
         record.delete()
 
         return RedirectResponse(
-            f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}",
-            status_code=302
+            f"{config.ADMIN_PANEL_ROUTE_PREFIX}/{model_name}", status_code=302
         )
-

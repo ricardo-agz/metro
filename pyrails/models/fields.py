@@ -43,7 +43,6 @@ __all__ = [
     "DynamicEmbeddedDocument",
     "EmbeddedDocumentListField",
     "DictField",
-
     # Specialty fields
     "EncryptedField",
     "HashedField",

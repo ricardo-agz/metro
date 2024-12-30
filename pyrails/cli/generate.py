@@ -76,9 +76,7 @@ def model(model_name, fields):
             # 4b) list:ref:Model => many-to-many references
             elif inner_type.startswith("ref:"):
                 ref_model = inner_type[4:]
-                fields_code += (
-                    f"    {name} = ListField(ReferenceField('{ref_model}'), required={not optional})\n"
-                )
+                fields_code += f"    {name} = ListField(ReferenceField('{ref_model}'), required={not optional})\n"
                 pydantic_code += f"    {name}: list[str]  # List of ObjectId references to {ref_model}\n"
             # 4c) list of standard type
             else:
@@ -197,7 +195,9 @@ def controller(controller_name, methods):
 
     # Update controllers __init__.py
     init_path = "app/controllers/__init__.py"
-    line_to_insert = f"from .{snake_case_name}_controller import {pascal_case_name}Controller"
+    line_to_insert = (
+        f"from .{snake_case_name}_controller import {pascal_case_name}Controller"
+    )
     insert_line_without_duplicating(init_path, line_to_insert)
 
     click.echo(f"Controller '{pascal_case_name}' generated at '{controller_path}'.")
@@ -256,9 +256,7 @@ def scaffold(name, fields):
 
             elif inner_type.startswith("ref:"):
                 ref_model = inner_type[4:]
-                fields_code += (
-                    f"    {name} = ListField(ReferenceField('{ref_model}'), required={not optional})\n"
-                )
+                fields_code += f"    {name} = ListField(ReferenceField('{ref_model}'), required={not optional})\n"
                 pydantic_code += f"    {name}: list[str]  # List of ObjectId references to {ref_model}\n"
             else:
                 mongo_field = mongoengine_type_mapping.get(
@@ -329,7 +327,9 @@ def scaffold(name, fields):
 
     # Update controllers __init__.py
     init_path = "app/controllers/__init__.py"
-    line_to_insert = f"from .{plural_snake_case}_controller import {plural_pascal_case}Controller"
+    line_to_insert = (
+        f"from .{plural_snake_case}_controller import {plural_pascal_case}Controller"
+    )
     insert_line_without_duplicating(init_path, line_to_insert)
 
     # Update models __init__.py
@@ -399,7 +399,9 @@ def job(job_name, queue, batch_size, batch_interval):
         job_class_name=pascal_case_name,
         queue_name=queue,
         batchable_config=batchable_config_str,
-        perform_method=(perform_batch_str if (batch_size or batch_interval) else perform_str),
+        perform_method=(
+            perform_batch_str if (batch_size or batch_interval) else perform_str
+        ),
     )
     job_path = f"app/jobs/{snake_case_name}.py"
     os.makedirs(os.path.dirname(job_path), exist_ok=True)
@@ -411,7 +413,9 @@ def job(job_name, queue, batch_size, batch_interval):
     line_to_insert = f"from .{snake_case_name} import {pascal_case_name}"
     insert_line_without_duplicating(init_path, line_to_insert)
 
-    click.echo(f"Job '{pascal_case_name}' generated at '{job_path}' and added to {init_path}.")
+    click.echo(
+        f"Job '{pascal_case_name}' generated at '{job_path}' and added to {init_path}."
+    )
 
 
 @generate.command()
@@ -446,12 +450,7 @@ def job(job_name, queue, batch_size, batch_interval):
     help="Specify directories to load jobs from. Defaults to 'app/jobs'.",
 )
 def worker(
-    worker_name,
-    backend_host,
-    backend_port,
-    backend_db,
-    job_modules,
-    job_directories
+    worker_name, backend_host, backend_port, backend_db, job_modules, job_directories
 ):
     """Generate a new worker class."""
     if not is_valid_identifier(worker_name):
