@@ -9,6 +9,7 @@ import inspect
 
 from starlette.responses import RedirectResponse
 
+from pyrails.admin.find_auth_class import find_auth_class
 from pyrails.controllers import Controller, get, post, put, delete, before_request
 from pyrails.exceptions import ValidationError, NotFoundError
 from pyrails import Request
@@ -39,12 +40,13 @@ class AdminPanelController(Controller):
         super().__init__()
         self._discovered_models = {}
         self._discover_models()
+        self.admin_auth_class = find_auth_class()
 
     @before_request
     async def check_admin_auth(self, request: Request):
         """Check if the user is authenticated as admin"""
         admin_token = request.cookies.get("admin_token")
-        if not admin_token or admin_token != config.ADMIN_SECRET:
+        if not admin_token or not self.admin_auth_class.verify_auth_token(admin_token):
             return RedirectResponse(f"/auth{config.ADMIN_PANEL_ROUTE_PREFIX}/login")
 
     def _discover_models(self):

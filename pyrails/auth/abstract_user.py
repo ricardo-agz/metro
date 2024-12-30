@@ -1,0 +1,95 @@
+from datetime import datetime, timedelta
+from typing import Optional
+import jwt
+
+from pyrails.models import BaseModel, StringField, BooleanField, EmailField, DateTimeField, HashedField
+from pyrails.config import config
+
+
+class AbstractUser(BaseModel):
+    """
+    Abstract base class for User models providing core authentication functionality.
+    Inherits from BaseModel for common model operations.
+    """
+
+    username = StringField(required=True, unique=True, max_length=150)
+    email = EmailField(required=True, unique=True)
+    password_hash = HashedField(required=True)
+    is_staff = BooleanField(default=False)  # Can access admin site
+    is_superuser = BooleanField(default=False)  # Has all permissions
+    last_login = DateTimeField()
+
+    meta = {
+        'abstract': True,
+        'indexes': [
+            'username',
+            'email',
+            {'fields': ['username'], 'unique': True},
+            {'fields': ['email'], 'unique': True}
+        ]
+    }
+
+    @classmethod
+    def find_by_username(cls, username: str) -> Optional['AbstractUser']:
+        """Find a user by username"""
+        return cls.objects(username=username).first()
+
+    @classmethod
+    def authenticate(cls, username_or_email: str, password: str) -> Optional['AbstractUser']:
+        """Authenticate a user by username or email and password"""
+        user = cls.objects(username=username_or_email).first()
+        if not user:
+            user = cls.objects(email=username_or_email).first()
+        if user and user.password_hash.verify(password):
+            return user
+        return None
+
+    def verify_password(self, password: str) -> bool:
+        """Verify if the provided password matches the stored hash"""
+        return self.password_hash.verify(password)
+
+    def get_auth_token(self, expires_in: int = 3600, secret_key: str = None) -> str:
+        """
+        Generate a JWT token for the user
+
+        Args:
+            expires_in: Token expiration time in seconds (default: 1 hour)
+            secret_key: The secret key to sign the token (default: config.JWT_SECRET_KEY)
+        """
+        if not secret_key:
+            secret_key = config.JWT_SECRET_KEY
+        expiration = datetime.utcnow() + timedelta(seconds=expires_in)
+        payload = {
+            'user_id': str(self.id),
+            'username': self.username,
+            'exp': expiration
+        }
+        return jwt.encode(payload, secret_key, algorithm='HS256')
+
+    @classmethod
+    def verify_auth_token(cls, token: str, secret_key: str = None) -> Optional['AbstractUser']:
+        """
+        Verify a JWT token and return the corresponding user
+
+        Args:
+            token: The JWT token to verify
+            secret_key: The secret key used to sign the token
+
+        Returns:
+            The user object if token is valid, None otherwise
+        """
+        if not secret_key:
+            secret_key = config.JWT_SECRET_KEY
+        try:
+            payload = jwt.decode(token, secret_key, algorithms=['HS256'])
+            user = cls.find_by_id(payload['user_id'])
+            if user:
+                return user
+            return None
+        except jwt.ExpiredSignatureError:
+            return None
+        except jwt.InvalidTokenError:
+            return None
+
+    class Meta:
+        abstract = True

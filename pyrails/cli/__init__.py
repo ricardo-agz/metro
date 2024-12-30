@@ -9,6 +9,7 @@ import uvicorn
 from .project import new
 from .generate import generate
 from .db import db
+from .admin import admin
 
 
 @click.group()
@@ -20,6 +21,7 @@ cli.add_command(new, name="new")
 cli.add_command(generate, name="generate")
 cli.add_command(generate, name="g")
 cli.add_command(db, name="db")
+cli.add_command(admin, name="admin")
 
 
 @cli.command()
@@ -35,7 +37,7 @@ def run(port, host, docker):
 
 
 def run_docker_compose(port):
-    click.echo("Starting PyRails server in Docker mode with hot reloading")
+    click.echo("Starting PyRails server in Docker mode with hot reloading...")
 
     # Check if Docker is installed
     if not shutil.which("docker"):
@@ -64,7 +66,7 @@ def run_docker_compose(port):
 
 
 def run_local_server(host, port):
-    click.echo(f"Starting PyRails server locally on {host}:{port} with hot reloading")
+    click.echo(f"Starting PyRails server locally on {host}:{port} with hot reloading...")
 
     try:
         # Get the current working directory

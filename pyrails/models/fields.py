@@ -22,6 +22,7 @@ from mongoengine import (
     DynamicEmbeddedDocument,
     EmbeddedDocumentListField,
     DictField,
+    EmailField,
 )
 
 
@@ -43,6 +44,7 @@ __all__ = [
     "DynamicEmbeddedDocument",
     "EmbeddedDocumentListField",
     "DictField",
+    "EmailField",
     # Specialty fields
     "EncryptedField",
     "HashedField",

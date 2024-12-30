@@ -34,9 +34,9 @@ class Config:
 
         self.ADMIN_PANEL_ENABLED = True
         self.ADMIN_PANEL_ROUTE_PREFIX = "/admin"
-        self.ADMIN_USERNAME = "admin"
-        self.ADMIN_PASSWORD = "admin"
-        self.ADMIN_SECRET = "admin_secret"
+        self.ADMIN_AUTH_CLASS = "User"
+
+        self.JWT_SECRET_KEY = "PLEASE_CHANGE_ME"
 
         self.FILE_STORAGE_BACKEND = "filesystem"
         self.FILE_SYSTEM_STORAGE_LOCATION = "./uploads"
@@ -63,8 +63,6 @@ class Config:
         if os.path.exists(env_specific_path):
             load_dotenv(env_specific_path, override=True)
             self._set_env_vars_as_attributes()
-        else:
-            logger.info(f"No environment-specific .env.{self.ENV} file found")
 
     def _set_env_vars_as_attributes(self):
         """Set environment variables as attributes of the config object"""
