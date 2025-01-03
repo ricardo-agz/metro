@@ -66,7 +66,9 @@ def run_docker_compose(port):
 
 
 def run_local_server(host, port):
-    click.echo(f"Starting PyRails server locally on {host}:{port} with hot reloading...")
+    click.echo(
+        f"Starting PyRails server locally on {host}:{port} with hot reloading..."
+    )
 
     try:
         # Get the current working directory

@@ -14,6 +14,12 @@ class HashedValue:
             plain_text.encode("utf-8"), self.hashed_value.encode("utf-8")
         )
 
+    @classmethod
+    def dummy_verify(cls):
+        """"""
+        dummy_hash = bcrypt.hashpw(b"dummy", bcrypt.gensalt())
+        bcrypt.checkpw(b"dummy", dummy_hash)
+
     def __repr__(self):
         return f"<HashedValue: {self.hashed_value}>"
 

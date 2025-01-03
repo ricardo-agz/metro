@@ -6,7 +6,6 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from pyrails.communications.providers import (
     EmailProvider,
     MailgunProvider,
-    TwilioProvider,
 )
 from pyrails.communications.providers.aws import AWSESProvider
 from pyrails.communications.providers.base import ProviderNotConfiguredError
@@ -45,9 +44,6 @@ class EmailSender:
         aws_configured = hasattr(config, "AWS_ACCESS_KEY_ID") and hasattr(
             config, "AWS_SECRET_ACCESS_KEY"
         )
-        twilio_configured = hasattr(config, "TWILIO_ACCOUNT_SID") and hasattr(
-            config, "TWILIO_AUTH_TOKEN"
-        )
 
         if mailgun_configured:
             mailgun_domain = config.MAILGUN_DOMAIN
@@ -59,13 +55,6 @@ class EmailSender:
             aws_secret_key = config.AWS_SECRET_ACCESS_KEY
             logger.info("Configuring AWSESProvider based on config.")
             return AWSESProvider()
-        elif twilio_configured:
-            twilio_account_sid = config.TWILIO_ACCOUNT_SID
-            twilio_auth_token = config.TWILIO_AUTH_TOKEN
-            logger.info("Configuring TwilioProvider based on config.")
-            return TwilioProvider(
-                account_sid=twilio_account_sid, auth_token=twilio_auth_token
-            )
         else:
             logger.error(
                 "No email provider configured. Please set Mailgun or AWS SES environment variables."
@@ -107,36 +96,6 @@ class EmailSender:
                 "Please ensure 'templates/email' exists in your application or specify a 'templates_dir'."
             )
 
-    @staticmethod
-    def _apply_base_styling(body: str) -> str:
-        return f"""
-        <html>
-        <head>
-            <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    padding: 20px;
-                    background-color: #f4f4f4;
-                    color: #333;
-                    line-height: 1.6;
-                }}
-                .email-content {{
-                    background-color: #fff;
-                    padding: 20px;
-                    border-radius: 5px;
-                    max-width: 600px;
-                    margin: 0 auto;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="email-content">
-                {body}
-            </div>
-        </body>
-        </html>
-        """
-
     def send_email(
         self,
         source: str,
@@ -145,7 +104,6 @@ class EmailSender:
         template_name: Optional[str] = None,
         context: Optional[dict[str, any]] = None,
         body: Optional[str] = None,
-        styled: bool = True,
     ):
         """
         Synchronously send an email.
@@ -156,7 +114,6 @@ class EmailSender:
         :param template_name: Name of the Jinja2 template to render.
         :param context: Context dictionary for template rendering.
         :param body: Raw HTML body of the email. Overrides template if provided.
-        :param styled: Whether to apply base styling to the email.
         :raises ValueError: If neither template_name nor body is provided.
         """
         if not template_name and not body:
@@ -173,9 +130,6 @@ class EmailSender:
             except Exception as e:
                 logger.error(f"Error rendering template '{template_name}': {e}")
                 raise
-
-        if styled:
-            body = self._apply_base_styling(body)
 
         self.provider.send_email(source, recipients, subject, body)
 
@@ -187,7 +141,6 @@ class EmailSender:
         template_name: Optional[str] = None,
         context: Optional[dict[str, any]] = None,
         body: Optional[str] = None,
-        styled: bool = True,
     ):
         """
         Asynchronously send an email.
@@ -198,7 +151,6 @@ class EmailSender:
         :param template_name: Name of the Jinja2 template to render.
         :param context: Context dictionary for template rendering.
         :param body: Raw HTML body of the email. Overrides template if provided.
-        :param styled: Whether to apply base styling to the email.
         :raises ValueError: If neither template_name nor body is provided.
         """
         if not template_name and not body:
@@ -215,9 +167,6 @@ class EmailSender:
             except Exception as e:
                 logger.error(f"Error rendering template '{template_name}': {e}")
                 raise
-
-        if styled:
-            body = self._apply_base_styling(body)
 
         await self.provider.send_email_async(source, recipients, subject, body)
 
@@ -257,21 +206,6 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
 
     load_dotenv()
-
-    # Twilio
-    twilio_provider = TwilioProvider(
-        account_sid=os.getenv("TWILIO_ACCOUNT_SID"),
-        auth_token=os.getenv("TWILIO_AUTH_TOKEN"),
-    )
-    twilio_sender = EmailSender(provider=twilio_provider, templates_dir="/")
-
-    # send email w twilio
-    twilio_sender.send_email(
-        source="sender@example.com",
-        recipients=["ricardo@neutrinoapp.com"],
-        subject="Test Email",
-        body="This is a test email sent using Twilio.",
-    )
 
     # # Using Mailgun
     # mailgun_sender.send_email(

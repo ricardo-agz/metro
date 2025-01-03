@@ -43,10 +43,10 @@ def createsuperuser():
             continue
 
         field_type = admin_auth_class._fields[field].__class__.__name__
-        value = click.prompt(field, default='', show_default=False)
+        value = click.prompt(field, default="", show_default=False)
 
         # Skip empty values
-        if value == '':
+        if value == "":
             continue
 
         if field_type == "BooleanField":

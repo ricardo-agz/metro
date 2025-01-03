@@ -1,1 +1,1 @@
-from .abstract_user import AbstractUser
+from pyrails.auth.user.user_base import UserBase

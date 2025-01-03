@@ -20,7 +20,7 @@ class UserBase(BaseModel):
     Inherits from BaseModel for common model operations.
     """
 
-    AUTH_FIELDS = ["username", "email"]
+    auth_fields = ["username", "email"]
 
     username = StringField(required=True, unique=True, max_length=150)
     email = EmailField(required=True, unique=True)
@@ -48,7 +48,7 @@ class UserBase(BaseModel):
     def authenticate(cls, identifier: str, password: str) -> Optional["UserBase"]:
         """Authenticate a user by username or email and password"""
         query = Q()
-        for field_name in cls.AUTH_FIELDS:
+        for field_name in cls.auth_fields:
             query = query | Q(**{field_name: identifier})
 
         user = cls.objects(query).first()

@@ -18,6 +18,7 @@ setup(
         "jinja2",
         "requests",
         "httpx",
+        "pyjwt~=2.10.1",
     ],
     entry_points="""
         [console_scripts]

@@ -17,8 +17,7 @@ class BaseModel(BaseModelLogic, FileHandlingMixin, Document):
 
     def save(self, *args, **kwargs) -> "BaseModel":
         try:
-            self.validate()  # Run validation
-            self.clean()  # Run validation
+            self.validate(clean=True)
             self.pre_save()  # Run pre-save hooks
             self.updated_at = datetime.utcnow()
             result = super().save(*args, **kwargs)

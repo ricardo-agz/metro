@@ -5,13 +5,13 @@ import traceback
 import sys
 from typing import Type, Optional
 
-from pyrails.auth import AbstractUser
+from pyrails.auth import UserBase
 from pyrails.config import config
 from pyrails.models import BaseModel
 from pyrails.logger import logger
 
 
-def find_auth_class(verbose: bool = True) -> Optional[Type[AbstractUser]]:
+def find_auth_class(verbose: bool = True) -> Optional[Type[UserBase]]:
     """Recursively search for auth class in models directory and subdirectories"""
     sys.path.append(os.getcwd())
     models_dir = os.path.join(os.getcwd(), "app", "models")
@@ -33,14 +33,14 @@ def find_auth_class(verbose: bool = True) -> Optional[Type[AbstractUser]]:
                     # Inspect each class in the module
                     for name, obj in inspect.getmembers(module):
                         if (
-                                inspect.isclass(obj)
-                                and issubclass(obj, BaseModel)
-                                and obj != BaseModel
-                                and name.lower() == config.ADMIN_AUTH_CLASS.lower()
+                            inspect.isclass(obj)
+                            and issubclass(obj, BaseModel)
+                            and obj != BaseModel
+                            and name.lower() == config.ADMIN_AUTH_CLASS.lower()
                         ):
-                            if not issubclass(obj, AbstractUser) and verbose:
+                            if not issubclass(obj, UserBase) and verbose:
                                 logger.warn(
-                                    f"Admin auth class {config.ADMIN_AUTH_CLASS} does not inherit AbstractUser. Make sure {config.ADMIN_AUTH_CLASS} implements the necessary fields and methods or set it to inherit from AbstractUser."
+                                    f"Admin auth class {config.ADMIN_AUTH_CLASS} does not inherit UserBase. Make sure {config.ADMIN_AUTH_CLASS} implements the necessary fields and methods or set it to inherit from UserBase."
                                 )
                             return obj
 
