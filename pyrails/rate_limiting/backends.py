@@ -4,10 +4,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
 from threading import Lock
-from typing import Optional, Protocol, TypedDict, Type, Annotated
+from typing import Optional, Type
 from pydantic import (
     BaseModel as PydanticBaseModel,
-    AfterValidator,
     Field,
     model_validator,
 )
@@ -41,12 +40,11 @@ class RateLimitPeriod(str, Enum):
         }[self]
 
 
-
 class RateLimits(PydanticBaseModel):
-    per_second: Optional[int] = Field(default=None, ge=0)
-    per_minute: Optional[int] = Field(default=None, ge=0)
-    per_hour: Optional[int] = Field(default=None, ge=0)
-    per_day: Optional[int] = Field(default=None, ge=0)
+    per_second: Optional[float] = Field(default=None, ge=0)
+    per_minute: Optional[float] = Field(default=None, ge=0)
+    per_hour: Optional[float] = Field(default=None, ge=0)
+    per_day: Optional[float] = Field(default=None, ge=0)
     priority: int = Field(default=0)
 
     @model_validator(mode="after")
@@ -124,8 +122,8 @@ class RateLimits(PydanticBaseModel):
 
 
 class RateLimitResponse(PydanticBaseModel):
-    limit: int = Field(ge=0)
-    remaining: int = Field(ge=0)
+    limit: float = Field(ge=0)
+    remaining: float = Field(ge=0)
     reset: str  # ISO format timestamp
     period: RateLimitPeriod
 
@@ -179,48 +177,42 @@ class InMemoryRateLimiterBackend(RateLimiterBackend):
             key_requests = self.requests[identifier]
             key_costs = self.costs[identifier]
 
-            # Check each period's limits
+            # Check ALL period constraints first
+            current_counts = {}
             for period, limit in limits.get_limits_dict().items():
                 window = period.seconds
                 cutoff = now - window
 
-                # Clean old requests and their costs
-                valid_indices = []
-                current_cost = 0.0
-                for i, t in enumerate(key_requests[period]):
-                    if t > cutoff:
-                        valid_indices.append(i)
-                        current_cost += key_costs[period][i]
-
-                # Update lists to keep only valid entries
-                key_requests[period] = [key_requests[period][i] for i in valid_indices]
-                key_costs[period] = [key_costs[period][i] for i in valid_indices]
+                # Calculate current usage within window
+                valid_costs = [
+                    cost
+                    for t, cost in zip(key_requests[period], key_costs[period])
+                    if t > cutoff
+                ]
+                current_cost = sum(valid_costs)
+                current_counts[period] = current_cost
 
                 # Check if adding new cost would exceed limit
                 if current_cost + cost > limit:
                     reset_time = self.get_reset_time(period)
                     return False, RateLimitResponse(
                         limit=limit,
-                        remaining=0,
+                        remaining=max(0, limit - current_cost),
                         reset=reset_time.isoformat(),
                         period=period,
                     )
 
-            # Record request and its cost
-            key_requests[period].append(now)
-            key_costs[period].append(cost)
+            # If we get here, request passes all constraints
+            # Now we can record the new request
+            for period in limits.get_limits_dict().keys():
+                key_requests[period].append(now)
+                key_costs[period].append(cost)
 
-            # Calculate remaining capacity based on costs
-            counts = {
-                period: sum(key_costs[period])
-                for period in limits.get_limits_dict().keys()
-            }
-
-            most_constrained = limits.get_most_constrained_period(counts)
-            min_remaining = limits.get_min_remaining(counts)
+            most_constrained = limits.get_most_constrained_period(current_counts)
+            min_remaining = limits.get_min_remaining(current_counts)
 
             return True, RateLimitResponse(
-                limit=limits.min_limit,
+                limit=limits.get_period_limit(most_constrained),
                 remaining=max(0, min_remaining),
                 reset=self.get_reset_time(most_constrained).isoformat(),
                 period=most_constrained,
@@ -252,10 +244,9 @@ class RedisRateLimiterBackend(RateLimiterBackend):
                 password=password,
                 decode_responses=True,
             )
-            print("Redis client created", redis_client)
 
         try:
-            print("ping", redis_client.ping())
+            redis_client.ping()
         except Exception as e:
             raise ValueError(f"RedisRateLimiterBackend failed to connect to Redis: {e}")
 
@@ -263,75 +254,59 @@ class RedisRateLimiterBackend(RateLimiterBackend):
         self.name = name
 
     def check_rate_limit(
-            self,
-            identifier: str,
-            limits: RateLimits,
-            cost: float = 1.0
+        self, identifier: str, limits: RateLimits, cost: float = 1.0
     ) -> tuple[bool, RateLimitResponse]:
         pipe = self.redis.pipeline()
         current_timestamp = int(time.time() * 1000)
         counts = {}
+        request_id = f"{cost}:{current_timestamp}"
 
-        # First, let's ensure our ZADD will work by using a unique score
-        # This ensures each request gets its own entry
-        request_id = f"{cost}:{current_timestamp}"  # Use composite member
-
+        # First pass: check all constraints BEFORE recording anything
         for period, limit_value in limits.get_limits_dict().items():
-            window_seconds = period.seconds
-            window_ms = window_seconds * 1000
+            window_ms = period.seconds * 1000
             redis_key = f"{self.name}:{identifier}:{period}"
-
-            # Remove old entries
             score_cutoff = current_timestamp - window_ms
-            pipe.zremrangebyscore(redis_key, 0, score_cutoff)
 
-            # Get current entries
+            # Just clean up old entries and get current entries
+            pipe.zremrangebyscore(redis_key, 0, score_cutoff)
             pipe.zrange(redis_key, 0, -1, withscores=True)
 
-            # Add new entry with unique member
-            pipe.zadd(redis_key, {request_id: current_timestamp})
-
-            # Set expiry
-            pipe.expire(redis_key, window_seconds)
-
+        # Execute first batch of commands
         results = pipe.execute()
 
+        # Check all constraints
         for i, (period, limit_value) in enumerate(limits.get_limits_dict().items()):
-            entries = results[i * 4 + 1]  # The zrange result
-
-            # Calculate total cost including historical and new cost
-            current_cost = sum(float(member.split(':')[0]) for member, _ in entries)
+            entries = results[i * 2 + 1]  # Get zrange results
+            current_cost = sum(float(member.split(":")[0]) for member, _ in entries)
             total_usage = current_cost + cost
-
             counts[period] = total_usage
 
-            # Check if we exceeded the limit
             if total_usage > limit_value:
                 reset_time = self.get_reset_time(period)
-                # Clean up our added entry since we're rejecting
-                redis_key = f"{self.name}:{identifier}:{period}"
-                self.redis.zrem(redis_key, request_id)
-                return (
-                    False,
-                    RateLimitResponse(
-                        limit=limit_value,
-                        remaining=0,
-                        reset=reset_time.isoformat(),
-                        period=period,
-                    )
+                return False, RateLimitResponse(
+                    limit=limit_value,
+                    remaining=max(0, limit_value - current_cost),
+                    reset=reset_time.isoformat(),
+                    period=period,
                 )
+
+        # If we get here, all constraints passed
+        # Second pass: record the request in all windows
+        pipe = self.redis.pipeline()
+        for period, limit_value in limits.get_limits_dict().items():
+            redis_key = f"{self.name}:{identifier}:{period}"
+            pipe.zadd(redis_key, {request_id: current_timestamp})
+            pipe.expire(redis_key, period.seconds)
+        pipe.execute()
 
         most_constrained = limits.get_most_constrained_period(counts)
         min_remaining = limits.get_min_remaining(counts)
 
-        return (
-            True,
-            RateLimitResponse(
-                limit=limits.min_limit,
-                remaining=max(0, min_remaining),
-                reset=self.get_reset_time(most_constrained).isoformat(),
-                period=most_constrained,
-            )
+        return True, RateLimitResponse(
+            limit=limits.min_limit,
+            remaining=max(0, min_remaining),
+            reset=self.get_reset_time(most_constrained).isoformat(),
+            period=most_constrained,
         )
 
 
@@ -390,7 +365,7 @@ class MongoRateLimiterBackend(RateLimiterBackend):
         now = datetime.utcnow()
         costs = {}
 
-        # Check each period's limits
+        # First pass: check ALL constraints before recording anything
         for period, limit in limits.get_limits_dict().items():
             window = period.seconds
             cutoff = now - timedelta(seconds=window)
@@ -404,15 +379,16 @@ class MongoRateLimiterBackend(RateLimiterBackend):
                 reset_time = self.get_reset_time(period)
                 return False, RateLimitResponse(
                     limit=limit,
-                    remaining=0,
+                    remaining=max(0, limit - current_cost),
                     reset=reset_time.isoformat(),
                     period=period,
                 )
 
-        # Record this request with its cost
+        # If we get here, all constraints passed
+        # Now we can safely record the request
         self.usage_log.record_request(identifier, cost=cost)
 
-        # Add the new cost to all period totals
+        # Add the new cost to all period totals for the response
         costs = {period: cost_sum + cost for period, cost_sum in costs.items()}
 
         most_constrained = limits.get_most_constrained_period(costs)

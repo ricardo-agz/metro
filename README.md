@@ -308,6 +308,14 @@ class AdminUserController(AdminController):
 
 ---
 
+## Rate Limiting
+
+Pyrails includes a built-in rate limiter that can be applied to specific routes or controllers.
+
+
+
+---
+
 ## Email Sending
 Easily send emails using the built-in `EmailSender` class, which supports multiple email providers like Mailgun and AWS SES.
 

@@ -57,26 +57,44 @@ class AdminPanelController(Controller):
             module = importlib.import_module(f"app.models.{module_info.name}")
 
             for name, obj in inspect.getmembers(module):
-                if (
-                    inspect.isclass(obj)
-                    and issubclass(obj, BaseModel)
-                    and obj != BaseModel
-                ):
+                if not inspect.isclass(obj):
+                    continue
 
-                    fields = {}
-                    display_fields = []
+                if not issubclass(obj, BaseModel) or obj == BaseModel:
+                    continue
 
-                    for field_name, field in obj._fields.items():
-                        if not field_name.startswith("_"):
-                            fields[field_name] = field
-                            display_fields.append((field_name, field))
+                # Check if the class was defined in the current module
+                if obj.__module__ != f"app.models.{module_info.name}":
+                    continue
 
-                    self._discovered_models[name.lower()] = ModelInfo(
-                        name=name,
-                        model_class=obj,
-                        fields=fields,
-                        display_fields=display_fields,
-                    )
+                # Check for abstract in both meta and Meta
+                is_abstract = False
+
+                # Check lowercase meta dictionary
+                if hasattr(obj, "_meta"):
+                    is_abstract = getattr(obj._meta, "abstract", False)
+
+                # Check uppercase Meta class
+                if hasattr(obj, "Meta"):
+                    is_abstract = is_abstract or getattr(obj.Meta, "abstract", False)
+
+                if is_abstract:
+                    continue
+
+                fields = {}
+                display_fields = []
+
+                for field_name, field in obj._fields.items():
+                    if not field_name.startswith("_"):
+                        fields[field_name] = field
+                        display_fields.append((field_name, field))
+
+                self._discovered_models[name.lower()] = ModelInfo(
+                    name=name,
+                    model_class=obj,
+                    fields=fields,
+                    display_fields=display_fields,
+                )
 
     @get(f"{config.ADMIN_PANEL_ROUTE_PREFIX}")
     async def admin_index(self, request: Request):

@@ -105,6 +105,3 @@ class UserBase(BaseModel):
             return None
         except jwt.InvalidTokenError:
             return None
-
-    class Meta:
-        abstract = True

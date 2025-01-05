@@ -23,6 +23,7 @@ class Config:
         self.DB_NAME = f"database_{self.ENV}"
         self.DATABASE_URL = "mongodb://localhost:27017"
         self.DEBUG = False
+        self.APP_MODE = "server"
 
         self.DATABASES = {
             "default": {

@@ -7,7 +7,9 @@ from .config import Config, config as app_config
 from .exceptions import exception_handlers
 from .db.connect_db import db_manager
 from .jobs.worker import PyRailsWorker
+
 from pyrails.admin import AdminPanelController, AdminPanelAuthController
+from pyrails.logger import logger
 
 
 class MethodOverrideMiddleware(BaseHTTPMiddleware):
@@ -94,6 +96,10 @@ class PyRailsApp(FastAPI):
         if self.config.ADMIN_PANEL_ENABLED:
             self.include_controller(AdminPanelController)
             self.include_controller(AdminPanelAuthController)
+            if "server" in self.config.APP_MODE:  # or some similar check
+                logger.info(
+                    f"Admin panel running on {self.config.ADMIN_PANEL_ROUTE_PREFIX}."
+                )
 
     def connect_db(self):
         for alias, db_config in self.config.DATABASES.items():
@@ -104,7 +110,7 @@ class PyRailsApp(FastAPI):
                 db_url=db_config["URL"],
                 is_default=is_default,
                 ssl_reqs=db_config["SSL"],
-                **db_config.get("KWARGS", {})
+                **db_config.get("KWARGS", {}),
             )
 
     def include_controller(self, controller_cls, prefix: str = "", tags: list = None):
