@@ -334,7 +334,7 @@ To apply rate limiting to a specific route, pass the `Throttler` class as a depe
 from pyrails.rate_limiting import Throttler
 
 @app.get("/users/{id}", dependencies=[Depends(Throttler(per_second=1, per_minute=10))]
-async def get_user(id: str):
+async def get_user(request: Request, id: str):
     return {"id": id}
 ```
 
@@ -349,9 +349,9 @@ Parameters:
 - `per_day`: Number of requests allowed per day.
 - `per_week`: Number of requests allowed per week.
 - `per_month`: Number of requests allowed per month.
-- `backend`: Rate limiting backend (e.g., `InMemoryRateLimiterBackend`, `RedisRateLimiterBackend`).
-- `callback`: Callback function to execute when the rate limit is exceeded. (request, limited, limit_info) => ...
-- `key`: Custom key function to generate a unique key for rate limiting. (request) => str
+- `backend`: Rate limiting backend (e.g., `InMemoryRateLimiterBackend`, `RedisRateLimiterBackend`). Defaults to InMemoryRateLimiterBackend.
+- `callback`: Callback function to execute when the rate limit is exceeded. (request, limited, limit_info) => .... Defaults to raising a `TooManyRequestsError` if limit is exceeded.
+- `key`: Custom key function to generate a unique key for rate limiting. (request) => str. Defaults to request IP.
 - `cost`: Custom cost function to calculate the cost of a request. (request) => int. Defaults to 1.
 
 ---
