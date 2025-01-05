@@ -50,6 +50,7 @@ class ControllerThrottler:
         per_minute: Callable[[Request], int] | int | None = None,
         per_hour: Callable[[Request], int] | int | None = None,
         per_day: Callable[[Request], int] | int | None = None,
+        per_week: Callable[[Request], int] | int | None = None,
         per_month: Callable[[Request], int] | int | None = None,
         cost: Union[float, Callable[[Request], float]] = 1.0,
         backend: RateLimiterBackend | None = None,
@@ -65,6 +66,7 @@ class ControllerThrottler:
             per_minute: Default rate limit per minute.
             per_hour: Default rate limit per hour.
             per_day: Default rate limit per day.
+            per_week: Default rate limit per week.
             per_month: Default rate limit per month.
             cost: Either a float or a callable that returns a float cost per request.
             backend: Optionally override the default backend for this route only.
@@ -72,7 +74,7 @@ class ControllerThrottler:
         Returns:
             A decorator that wraps the endpoint, checking the rate limit before calling it.
         """
-        if not limits and any([per_second, per_minute, per_hour, per_day, per_month]):
+        if not limits and any([per_second, per_minute, per_hour, per_day, per_week, per_month]):
 
             def limits(request: Request):
                 return RateLimits(
@@ -84,6 +86,7 @@ class ControllerThrottler:
                     ),
                     per_hour=per_hour(request) if callable(per_hour) else per_hour,
                     per_day=per_day(request) if callable(per_day) else per_day,
+                    per_week=per_week(request) if callable(per_week) else per_week,
                     per_month=per_month(request) if callable(per_month) else per_month,
                 )
 
@@ -198,6 +201,7 @@ class Throttler:
         per_minute: Callable[[Request], int] | int | None = None,
         per_hour: Callable[[Request], int] | int | None = None,
         per_day: Callable[[Request], int] | int | None = None,
+        per_week: Callable[[Request], int] | int | None = None,
         per_month: Callable[[Request], int] | int | None = None,
         callback: Callable[[Request, bool, RateLimits], any] | None = None,
         as_dependency: bool = False,
@@ -213,20 +217,12 @@ class Throttler:
             per_minute: Default rate limit per minute.
             per_hour: Default rate limit per hour.
             per_day: Default rate limit per day.
+            per_week: Default rate limit per week.
             per_month: Default rate limit per month.
             callback: An optional callback to run after the rate limit check.
             as_dependency: Whether this Throttler should be used as a FastAPI dependency.
         """
-        if not limits and any([per_second, per_minute, per_hour, per_day, per_month]):
-            print(
-                "limits not provided, but per_second, per_minute, per_hour, per_day, or per_month were.",
-                per_second,
-                per_minute,
-                per_hour,
-                per_day,
-                per_month,
-            )
-
+        if not limits and any([per_second, per_minute, per_hour, per_day, per_week, per_month]):
             def limits(request: Request):
                 lims = RateLimits(
                     per_second=(
@@ -237,6 +233,7 @@ class Throttler:
                     ),
                     per_hour=per_hour(request) if callable(per_hour) else per_hour,
                     per_day=per_day(request) if callable(per_day) else per_day,
+                    per_week=per_week(request) if callable(per_week) else per_week,
                     per_month=per_month(request) if callable(per_month) else per_month,
                 )
                 print("limits", lims)
@@ -272,8 +269,9 @@ def throttle(
     per_minute: Callable[[Request], int] | int | None = None,
     per_hour: Callable[[Request], int] | int | None = None,
     per_day: Callable[[Request], int] | int | None = None,
+    per_week: Callable[[Request], int] | int | None = None,
     per_month: Callable[[Request], int] | int | None = None,
-    callback: Callable[[bool, RateLimits, Request], any] | None = None,
+    callback: Callable[[Request, bool, RateLimits], any] | None = None,
 ):
     """
     A simple function-based decorator for direct usage:
@@ -305,6 +303,7 @@ def throttle(
         per_minute=per_minute,
         per_hour=per_hour,
         per_day=per_day,
+        per_week=per_week,
         per_month=per_month,
         cost=cost,
         callback=callback,

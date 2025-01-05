@@ -27,6 +27,7 @@ class RateLimitPeriod(str, Enum):
     MINUTE = "minute"
     HOUR = "hour"
     DAY = "day"
+    WEEK = "week"
     MONTH = "month"
 
     @property
@@ -36,6 +37,7 @@ class RateLimitPeriod(str, Enum):
             self.MINUTE: 60,
             self.HOUR: 3600,
             self.DAY: 86400,
+            self.WEEK: 604800,
             self.MONTH: 2592000,
         }[self]
 
@@ -45,13 +47,15 @@ class RateLimits(PydanticBaseModel):
     per_minute: Optional[float] = Field(default=None, ge=0)
     per_hour: Optional[float] = Field(default=None, ge=0)
     per_day: Optional[float] = Field(default=None, ge=0)
+    per_week: Optional[float] = Field(default=None, ge=0)
+    per_month: Optional[float] = Field(default=None, ge=0)
     priority: int = Field(default=0)
 
     @model_validator(mode="after")
     def validate_limits(self) -> "RateLimits":
-        if not any([self.per_second, self.per_minute, self.per_hour, self.per_day]):
+        if not any([self.per_second, self.per_minute, self.per_hour, self.per_day, self.per_week, self.per_month]):
             raise ValueError(
-                "At least one rate limit (per_second, per_minute, per_hour, per_day) must be set"
+                "At least one rate limit (per_second, per_minute, per_hour, per_day, per_week, per_month) must be set"
             )
         return self
 
@@ -60,7 +64,7 @@ class RateLimits(PydanticBaseModel):
         """Returns the smallest non-None rate limit value."""
         limits = [
             limit
-            for limit in [self.per_second, self.per_minute, self.per_hour, self.per_day]
+            for limit in [self.per_second, self.per_minute, self.per_hour, self.per_day, self.per_week, self.per_month]
             if limit is not None
         ]
         return min(limits) if limits else None
@@ -73,12 +77,14 @@ class RateLimits(PydanticBaseModel):
             self.per_minute: RateLimitPeriod.MINUTE,
             self.per_hour: RateLimitPeriod.HOUR,
             self.per_day: RateLimitPeriod.DAY,
+            self.per_week: RateLimitPeriod.WEEK,
+            self.per_month: RateLimitPeriod.MONTH,
         }
 
         # Get periods that have non-None limits
         valid_periods = [
             period_map[limit]
-            for limit in [self.per_second, self.per_minute, self.per_hour, self.per_day]
+            for limit in [self.per_second, self.per_minute, self.per_hour, self.per_day, self.per_week, self.per_month]
             if limit is not None
         ]
 
@@ -92,6 +98,8 @@ class RateLimits(PydanticBaseModel):
             RateLimitPeriod.MINUTE: self.per_minute,
             RateLimitPeriod.HOUR: self.per_hour,
             RateLimitPeriod.DAY: self.per_day,
+            RateLimitPeriod.WEEK: self.per_week,
+            RateLimitPeriod.MONTH: self.per_month,
         }
         return period_map.get(period)
 
@@ -102,6 +110,8 @@ class RateLimits(PydanticBaseModel):
             RateLimitPeriod.MINUTE: self.per_minute,
             RateLimitPeriod.HOUR: self.per_hour,
             RateLimitPeriod.DAY: self.per_day,
+            RateLimitPeriod.WEEK: self.per_week,
+            RateLimitPeriod.MONTH: self.per_month,
         }
         return {k: v for k, v in limits.items() if v is not None}
 

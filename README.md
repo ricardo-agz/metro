@@ -312,7 +312,47 @@ class AdminUserController(AdminController):
 
 Pyrails includes a built-in rate limiter that can be applied to specific routes or controllers.
 
+### Throttling Controller Endpoints:
 
+To apply rate limiting to a controller endpoint, use the `@throttle` decorator:
+
+```python
+from pyrails.rate_limiting import throttle
+
+class UserController(Controller):
+    @get('/users/{id}')
+    @throttle(per_second=1, per_minute=10)
+    async def get_user(self, request: Request, id: str):
+        return {"id": id}
+```
+
+### Throttling Routes
+
+To apply rate limiting to a specific route, pass the `Throttler` class as a dependency:
+
+```python
+from pyrails.rate_limiting import Throttler
+
+@app.get("/users/{id}", dependencies=[Depends(Throttler(per_second=1, per_minute=10))]
+async def get_user(id: str):
+    return {"id": id}
+```
+
+### Customizing Rate Limiting
+
+Parameters:
+- `name`: Namespace for the rate limiter.
+- `limits`: Compound rate limit definition. Can be a RateLimits() object or a function that returns a RateLimits() object.
+- `per_second`: Number of requests allowed per second.
+- `per_minute`: Number of requests allowed per minute.
+- `per_hour`: Number of requests allowed per hour.
+- `per_day`: Number of requests allowed per day.
+- `per_week`: Number of requests allowed per week.
+- `per_month`: Number of requests allowed per month.
+- `backend`: Rate limiting backend (e.g., `InMemoryRateLimiterBackend`, `RedisRateLimiterBackend`).
+- `callback`: Callback function to execute when the rate limit is exceeded. (request, limited, limit_info) => ...
+- `key`: Custom key function to generate a unique key for rate limiting. (request) => str
+- `cost`: Custom cost function to calculate the cost of a request. (request) => int. Defaults to 1.
 
 ---
 
