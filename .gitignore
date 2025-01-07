@@ -31,13 +31,13 @@ ENV/
 env/
 .venv/
 
-# PyRails generated files
+# Metro generated files
 app/models/__pycache__/
 app/controllers/__pycache__/
 app/__pycache__/
 config/__pycache__/
 
-# PyRails logs
+# Metro logs
 *.log
 *.sqlite3
 

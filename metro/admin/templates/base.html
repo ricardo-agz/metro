@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Metro Admin{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="flex flex-col min-h-screen bg-gray-100">
+    <!-- Navigation -->
+    <nav class="bg-gray-900 text-white">
+        <div class="mx-auto px-4">
+            <div class="flex h-14 items-center justify-between">
+                <div class="flex items-center">
+                    <a href="{{ admin_route_prefix }}" class="flex items-center space-x-3">
+                        <i class="fas fa-cube text-xl"></i>
+                        <span class="font-semibold text-lg">Metro Admin</span>
+                    </a>
+                </div>
+
+                {% if request.cookies.get('admin_token') %}
+                <div class="flex items-center space-x-6">
+                    <span class="hidden md:flex items-center text-sm">
+                        <i class="fas fa-user mr-2 opacity-75"></i>
+                        Administrator
+                    </span>
+                    <form action="/auth{{ admin_route_prefix }}/logout" method="POST">
+                        <input type="hidden" name="_method" value="DELETE">
+                        <button type="submit" class="inline-flex items-center px-3 py-1 text-sm font-medium hover:bg-gray-800 rounded">
+                            <i class="fas fa-sign-out-alt mr-2 opacity-75"></i>
+                            Logout
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex flex-1 min-h-0">
+
+        <!-- Main Content -->
+        <div class="flex-1 min-w-0">
+            <main class="p-6">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200">
+        <div class="mx-auto px-4">
+            <div class="py-3 flex items-center justify-between text-sm">
+                <p class="text-gray-600">Built with Metro</p>
+                <div class="flex items-center space-x-4">
+                    <a href="https://github.com/ricardo-agz/metro" class="text-gray-600 hover:text-gray-900">Documentation</a>
+                    <a href="https://github.com/ricardo-agz/metro" class="text-gray-600 hover:text-gray-900">GitHub</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

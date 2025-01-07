@@ -1,6 +1,6 @@
-# PyRails
+# Metro
 
-PyRails is a lightweight, opinionated, batteries-included Python web framework built on top of FastAPI and MongoEngine.   
+Metro is a lightweight, opinionated, batteries-included Python web framework built on top of FastAPI and MongoEngine.   
 It is means to provide helpful, lightweight abstractions to enable standard ways of implementing common patters to 
 prevent the SaaSification of the developer stack. 
 
@@ -20,18 +20,18 @@ prevent the SaaSification of the developer stack.
 
 ## Installation
 
-Install PyRails using pip:
+Install Metro using pip:
 
-`pip install pyrails`
+`pip install metroapi`
 
 ---
 
 ## Creating a New Project
 
-Create a new PyRails project using the `new` command:
+Create a new Metro project using the `new` command:
 
 ```
-pyrails new my_project
+metro new my_project
 cd my_project
 ```
 
@@ -59,7 +59,7 @@ my_project/
 Start the development server using the `run` command:
 
 ```
-pyrails run
+metro run
 ```
 
 This will start the development server on http://localhost:8000.
@@ -68,19 +68,19 @@ This will start the development server on http://localhost:8000.
 You can also run the service using Docker:
 
 ```
-pyrails run --docker
+metro run --docker
 ```
 
 ---
 
 ## Scaffolding Resources
 
-PyRails includes a scaffold generator to quickly create models, controllers, and route definitions for a new resource.
+Metro includes a scaffold generator to quickly create models, controllers, and route definitions for a new resource.
 
 To generate a scaffold for a `Post` resource with `title` and `body` fields:
 
 ```
-pyrails generate scaffold Post title:str body:str
+metro generate scaffold Post title:str body:str
 ```
 
 This will generate:
@@ -100,7 +100,7 @@ You can also generate models and controllers individually.
 To generate a `Comment` model with `post_id`, `author`, and `content` fields:
 
 ```
-pyrails generate model Comment post_id:str author:str content:str
+metro generate model Comment post_id:str author:str content:str
 ```
 
 ### Generating a Controller
@@ -108,13 +108,13 @@ pyrails generate model Comment post_id:str author:str content:str
 To generate a controller for `Auth` routes:
 
 ```
-pyrails generate controller Auth
+metro generate controller Auth
 ```
 
 You can also pass in the routes to generate as arguments:
 
 ```
-pyrails generate controller Auth post:login post:register
+metro generate controller Auth post:login post:register
 ```
 
 ## Field types
@@ -133,7 +133,7 @@ You can define relationships between models using the following syntax:
 - **One-to-Many Relationship**: Use the `ref:` prefix followed by the related model name.
 
 ```
-pyrails generate model Post author:ref:User
+metro generate model Post author:ref:User
 ```
 
 This will generate a `Post` model with an `author` field referencing the `User` model.
@@ -141,7 +141,7 @@ This will generate a `Post` model with an `author` field referencing the `User` 
 - **Many-to-Many Relationship**: Use `list:` and `ref:` together.
 
 ```
-pyrails generate model Student courses:list:ref:Course
+metro generate model Student courses:list:ref:Course
 ```
 
 This will generate a `Student` model with a `courses` field that is a list of references to `Course` models.
@@ -153,7 +153,7 @@ This will generate a `Student` model with a `courses` field that is a list of re
 Append `_` to the field name to mark it as optional.
 
 ```
-pyrails generate model User email_:str
+metro generate model User email_:str
 ```
 
 This will generate a `User` model with an optional `email` field.
@@ -162,7 +162,7 @@ This will generate a `User` model with an optional `email` field.
 Append `^` to the field name to specify it as unique.
 
 ```
-pyrails generate model User username^:str
+metro generate model User username^:str
 ```
 
 This will generate a `User` model with a unique `username` field.
@@ -173,7 +173,7 @@ This will generate a `User` model with a unique `username` field.
 `hashed_str` is a special field type that automatically hashes the value before storing it in the database.
 
 ```
-pyrails generate model User name:str password_hashed:str
+metro generate model User name:str password_hashed:str
 ```
 
 This will generate a `User` model with a `password` field stored as a hashed value.
@@ -187,8 +187,8 @@ files to the specified storage backend (local filesystem, AWS S3, etc.) and stor
 
 Example usage:
 ```
-pyrails generate model User avatar:file
-pyrails generate model Post attachments:list:file
+metro generate model User avatar:file
+metro generate model Post attachments:list:file
 ```
 
 This will generate the following model classes:
@@ -272,9 +272,9 @@ Lifecycle hooks like `before_request` and `after_request` can be defined directl
 
 **`admin_controller.py`**
 ```python
-from pyrails.controllers import Controller, before_request, after_request
-from pyrails.exceptions import UnauthorizedError
-from pyrails import Request
+from metro.controllers import Controller, before_request, after_request
+from metro.exceptions import UnauthorizedError
+from metro import Request
 
 class AdminController(Controller):
     @before_request
@@ -310,14 +310,14 @@ class AdminUserController(AdminController):
 
 ## Rate Limiting
 
-Pyrails includes a built-in rate limiter that can be applied to specific routes or controllers.
+Metro includes a built-in rate limiter that can be applied to specific routes or controllers.
 
 ### Throttling Controller Endpoints:
 
 To apply rate limiting to a controller endpoint, use the `@throttle` decorator:
 
 ```python
-from pyrails.rate_limiting import throttle
+from metro.rate_limiting import throttle
 
 class UserController(Controller):
     @get('/users/{id}')
@@ -331,7 +331,7 @@ class UserController(Controller):
 To apply rate limiting to a specific route, pass the `Throttler` class as a dependency:
 
 ```python
-from pyrails.rate_limiting import Throttler
+from metro.rate_limiting import Throttler
 
 @app.get("/users/{id}", dependencies=[Depends(Throttler(per_second=1, per_minute=10))]
 async def get_user(request: Request, id: str):
@@ -412,14 +412,14 @@ sms_sender.send_sms(
 
 ## Database Management
 
-PyRails provides commands to manage your MongoDB database.
+Metro provides commands to manage your MongoDB database.
 
 ### Starting a Local MongoDB Instance
 
 To start a local MongoDB instance for development:
 
 ```
-pyrails db up
+metro db up
 ```
 
 ### Stopping the Local MongoDB Instance
@@ -427,7 +427,7 @@ pyrails db up
 To stop the local MongoDB instance:
 
 ```
-pyrails db down
+metro db down
 ```
 
 ### Running MongoDB in a Docker Container
@@ -435,7 +435,7 @@ pyrails db down
 You can also specify the environment and run MongoDB in a Docker container:
 
 ```
-pyrails db up --env production --docker
+metro db up --env production --docker
 ```
 
 ---
@@ -453,7 +453,7 @@ Here you can set your `DATABASE_URL`, API keys, and other settings that vary bet
 
 ## Admin Panel
 
-PyRails includes a built-in admin panel. You can view this at `/admin`
+Metro includes a built-in admin panel. You can view this at `/admin`
 
 You can disable this or change the admin route in the `config/development.py` or `config/production.py` file:
 
@@ -467,12 +467,12 @@ ADMIN_PANEL_ROUTE_PREFIX = "/admin-panel"
 ## Documentation and Help
 
 - **API Documentation**: http://localhost:8000/docs
-- **CLI help**: `pyrails --help`
+- **CLI help**: `metro --help`
 
-For guides, tutorials, and detailed API references, check out the PyRails documentation site.
+For guides, tutorials, and detailed API references, check out the Metro documentation site.
 
 ---
 
 ## License
 
-PyRails is open-source software licensed under the MIT license.
+Metro is open-source software licensed under the MIT license.
