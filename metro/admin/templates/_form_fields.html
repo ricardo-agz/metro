@@ -1,0 +1,81 @@
+{# _form_fields.html #}
+{% import "_field_macros.html" as fm %}
+
+{% macro render_form_fields(model_info, record=None, show_advanced=True) %}
+    {# Loop through all fields and render them conditionally #}
+    {% for field_name, field in model_info.fields.items() %}
+        {% if field_name not in ['id', 'created_at', 'updated_at', 'deleted_at'] %}
+            <div class="p-6">
+                <label class="block text-sm font-medium text-gray-700" for="{{ field_name }}">
+                    {{ field_name }}
+                    {% if field.required %}
+                        <span class="text-red-500">*</span>
+                    {% endif %}
+                        <span class="text-gray-400 font-normal ml-2">({{ field.__class__.__name__ }})</span>
+                </label>
+
+                <div class="mt-2">
+                    {# Boolean field #}
+                    {% if field.__class__.__name__ == 'BooleanField' %}
+                        {{ fm.render_boolean_field(field_name, field, record) }}
+
+                    {# Dict field #}
+                    {% elif field.__class__.__name__ == 'DictField' %}
+                        {{ fm.render_dict_field(field_name, field, record) }}
+
+                    {# List field #}
+                    {% elif field.__class__.__name__ == 'ListField' %}
+                        {{ fm.render_list_field(field_name, field, record) }}
+
+                    {# Single/Multi file fields #}
+                    {% elif field.__class__.__name__ in ['FileField', 'FileListField'] %}
+                        {{ fm.render_file_field(field_name, field, record) }}
+
+                    {# Date field #}
+                    {% elif field.__class__.__name__ in ['DateTimeField', 'DateField'] %}
+                        {{ fm.render_date_field(field_name, field, record) }}
+
+                    {# Everything else #}
+                    {% else %}
+                        {{ fm.render_standard_field(field_name, field, record) }}
+                    {% endif %}
+
+                    {# Print help text if it exists (and it's not a ListField) #}
+                    {% if field.help_text and field.__class__.__name__ != 'ListField' %}
+                        <p class="mt-2 text-sm text-gray-500">{{ field.help_text }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    {% endfor %}
+
+    {# Show "Advanced Fields" section if desired #}
+    {% if show_advanced %}
+        <div class="p-6">
+            <button type="button"
+                    onclick="toggleAdvancedFields()"
+                    class="flex items-center text-sm text-gray-600 hover:text-gray-900 focus:outline-none">
+                <i id="advanced-icon" class="fas fa-chevron-right mr-2 transition-transform"></i>
+                Built-in Fields
+            </button>
+
+            <div id="advanced-fields" class="hidden mt-4 space-y-4">
+                {% for field_name, field in model_info.fields.items() %}
+                    {% if field_name in ['created_at', 'deleted_at'] %}
+                        <div class="p-4 bg-gray-50 rounded-md">
+                            <label class="block text-sm font-medium text-gray-700" for="{{ field_name }}">
+                                {{ field_name }}
+                            </label>
+                            <input type="datetime-local"
+                                   id="{{ field_name }}"
+                                   name="{{ field_name }}"
+                                   value="{{ record[field_name]|string if record else '' }}"
+                                   class="mt-1 block w-full rounded-md border py-2 px-3 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+                            <p class="mt-1 text-xs text-gray-500">Leave empty to use default value</p>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+{% endmacro %}

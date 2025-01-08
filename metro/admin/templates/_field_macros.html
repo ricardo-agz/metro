@@ -1,0 +1,225 @@
+{# _field_macros.html #}
+{% macro render_boolean_field(field_name, field, record) %}
+    <label class="inline-flex items-center">
+        <input type="checkbox"
+               id="{{ field_name }}"
+               name="{{ field_name }}"
+               {% if record and record[field_name] %}checked{% endif %}
+               class="w-4 h-4 text-blue-600 rounded border focus:ring-blue-500">
+    </label>
+{% endmacro %}
+
+
+{# _field_macros.html #}
+{% macro render_dict_field(field_name, field, record) %}
+    <div class="mt-1">
+        <textarea
+            id="{{ field_name }}"
+            name="{{ field_name }}"
+            rows="4"
+            class="block w-full rounded-md border py-2 px-3 text-sm focus:border-blue-500 focus:ring-blue-500"
+            placeholder="Enter JSON object">{{ record[field_name]|tojson if record and record[field_name] else '{}' }}</textarea>
+        {% if field.help_text %}
+            <p class="mt-2 text-sm text-gray-500">{{ field.help_text }}</p>
+        {% endif %}
+        <p class="mt-2 text-xs text-gray-400">Enter data as JSON object</p>
+    </div>
+{% endmacro %}
+
+
+{# _field_macros.html #}
+{% macro render_complex_list_field(field_name, field, record) %}
+    <div class="mt-1">
+        <textarea
+            id="{{ field_name }}"
+            name="{{ field_name }}"
+            rows="4"
+            class="block w-full rounded-md border py-2 px-3 text-sm focus:border-blue-500 focus:ring-blue-500"
+            placeholder="Enter JSON array">{{ record[field_name]|tojson if record and record[field_name] else '[]' }}</textarea>
+        {% if field.help_text %}
+            <p class="mt-2 text-sm text-gray-500">{{ field.help_text }}</p>
+        {% endif %}
+        <p class="mt-2 text-xs text-gray-400">Enter data as JSON array</p>
+    </div>
+{% endmacro %}
+
+{% macro render_list_field(field_name, field, record) %}
+    {# Check if this is a complex list field #}
+    {% if field.field.__class__.__name__ in ['DictField', 'EmbeddedDocumentField'] or
+       (field.field.__class__.__name__ == 'ListField' and field.field.field.__class__.__name__ not in ['StringField', 'IntField', 'FloatField', 'ObjectIdField', 'ReferenceField']) %}
+        {{ render_complex_list_field(field_name, field, record) }}
+    {% else %}
+    <div class="mt-1">
+        <!-- Container for the chips -->
+        <div class="flex flex-wrap gap-2 px-2 py-2 border rounded-md bg-gray-50"
+             id="{{ field_name }}-chips">
+
+            <!-- Empty state (hidden if there's any item) -->
+            <div class="text-gray-400 {% if record and record[field_name] and record[field_name]|length > 0 %}hidden{% endif %}"
+                 data-empty>
+                <span class="text-sm">No items in this list</span>
+            </div>
+
+            <!-- Render existing items (chips) -->
+            {% if record and record[field_name] and record[field_name]|length > 0 %}
+                {% for item in record[field_name] %}
+                    <div class="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded"
+                         data-value="{{ item }}">
+                        <span>{{ item }}</span>
+                        <button type="button"
+                                onclick="removeListItem('{{ field_name }}', '{{ item }}')"
+                                class="text-blue-600 hover:text-blue-800 font-bold">
+                            &times;
+                        </button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <!-- Input for adding new items -->
+        <div class="mt-2 flex gap-2">
+            <input type="text"
+                   id="{{ field_name }}-input"
+                   placeholder="Type and press Enter to add..."
+                   class="flex-1 rounded-md border py-2 px-3 text-sm focus:border-blue-500 focus:ring-blue-500"
+                   onkeydown="handleListInput(event, '{{ field_name }}', '{{ field.field.__class__.__name__ }}')">
+        </div>
+
+        <!-- Hidden input to store actual values as comma-separated strings -->
+        <input type="hidden"
+               id="{{ field_name }}"
+               name="{{ field_name }}"
+               value="{{ ','.join(record[field_name]|map('string')) if record and record[field_name] else '' }}">
+
+        {% if field.help_text %}
+            <p class="mt-2 text-sm text-gray-500">{{ field.help_text }}</p>
+        {% endif %}
+    </div>
+    {% endif %}
+{% endmacro %}
+
+
+{% macro render_file_field(field_name, field, record) %}
+    <div class="mt-1">
+        <div class="flex items-center justify-center w-full">
+            <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors duration-200">
+                <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                    <i class="fas fa-cloud-upload-alt text-2xl text-gray-400 mb-2"></i>
+                    <p class="mb-2 text-sm text-gray-500">Click to upload or drag and drop</p>
+                    <p class="text-xs text-gray-500">
+                        {{ ', '.join(field.allowed_extensions) if field.allowed_extensions else 'All files' }}
+                        {% if field.max_size %}
+                            (Max: {{ field.max_size // (1024*1024) }}MB)
+                        {% endif %}
+                    </p>
+                </div>
+                <input type="file"
+                       id="{{ field_name }}_input"
+                       class="hidden"
+                       {% if field.required and not record %}required{% endif %}
+                       {% if field.__class__.__name__ == 'FileListField' %}multiple{% endif %}
+                       {% if field.allowed_extensions %}accept="{{ ','.join(field.allowed_extensions) }}"{% endif %}
+                       onchange="handleFileSelect(this, '{{ field_name }}')"
+                       data-field-name="{{ field_name }}">
+            </label>
+        </div>
+
+        <!-- Existing files tracking -->
+        <input type="hidden" id="{{ field_name }}_existing"
+               name="{{ field_name }}_existing"
+               value="{{ record[field_name].filename if record and record[field_name] and field.__class__.__name__ == 'FileField' else '' }}">
+        {% if field.__class__.__name__ == 'FileListField' and record and record[field_name] %}
+            {% for file in record[field_name] %}
+                <input type="hidden" name="{{ field_name }}_existing[]" value="{{ file.filename }}">
+            {% endfor %}
+        {% endif %}
+        <input type="hidden" id="{{ field_name }}_deleted" name="{{ field_name }}_deleted" value="">
+
+        <!-- File Display Sections -->
+        {% if record and record[field_name] %}
+        <div class="mt-4" id="{{ field_name }}-current-files">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">
+                {{ 'Current Files' if field.__class__.__name__ == 'FileListField' else 'Current File' }}
+            </h4>
+            {% if field.__class__.__name__ == 'FileListField' %}
+                {% for file in record[field_name] %}
+                    <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-md mb-2" data-file="{{ file.filename }}">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 flex-shrink-0 rounded border border-gray-200 overflow-hidden">
+                                <a href="{{ file.url }}" target="_blank"
+                                   class="w-full h-full flex items-center justify-center bg-gray-50">
+                                    <i class="fas fa-file text-gray-400"></i>
+                                </a>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-sm font-medium text-gray-700">{{ file.filename }}</span>
+                                {% if file.size %}
+                                    <span class="text-xs text-gray-500">
+                                        {{ (file.size / 1024 / 1024)|round(1) }} MB
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <button type="button"
+                                onclick="removeFile('{{ field_name }}', '{{ file.filename }}')"
+                                class="text-red-500 hover:text-red-700 focus:outline-none transition-colors duration-200">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-md"
+                     data-file="{{ record[field_name].filename }}">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 flex-shrink-0 rounded border border-gray-200 overflow-hidden">
+                            <a href="{{ record[field_name].url }}" target="_blank"
+                               class="w-full h-full flex items-center justify-center bg-gray-50">
+                                <i class="fas fa-file text-gray-400"></i>
+                            </a>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-sm font-medium text-gray-700">{{ record[field_name].filename }}</span>
+                            <span class="text-xs text-gray-500">
+                                {{ (record[field_name].size / 1024 / 1024)|round(1) }} MB
+                            </span>
+                        </div>
+                    </div>
+                    <button type="button"
+                            onclick="removeFile('{{ field_name }}', '{{ record[field_name].filename }}')"
+                            class="text-red-500 hover:text-red-700 focus:outline-none transition-colors duration-200">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- New files preview -->
+        <div id="{{ field_name }}-new-files" class="mt-4 hidden">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">
+                {{ 'New Files' if field.__class__.__name__ == 'FileListField' else 'New File' }}
+            </h4>
+            <div class="space-y-2"></div>
+        </div>
+    </div>
+{% endmacro %}
+
+
+{% macro render_date_field(field_name, field, record) %}
+        <input type="{% if field.__class__.__name__ == 'DateTimeField' %}datetime-local{% else %}date{% endif %}"
+           id="{{ field_name }}"
+           name="{{ field_name }}"
+           value="{{ record[field_name]|string if record and record[field_name] else '' }}"
+           class="mt-1 block w-full rounded-md border py-2 px-3 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+           {% if field.required %}required{% endif %}>
+{% endmacro %}
+
+
+{% macro render_standard_field(field_name, field, record) %}
+    <input type="{% if field.__class__.__name__ == 'IntField' %}number{% elif field.__class__.__name__ == 'DateTimeField' %}datetime-local{% elif field.__class__.__name__ == 'FloatField' %}number{% else %}text{% endif %}"
+           id="{{ field_name }}"
+           name="{{ field_name }}"
+           value="{{ record[field_name]|string if record and record[field_name] else '' }}"
+           class="mt-1 block w-full rounded-md border py-2 px-3 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+           {% if field.required %}required{% endif %}>
+{% endmacro %}

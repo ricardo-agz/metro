@@ -1,0 +1,212 @@
+{# _form_scripts.html #}
+{% macro render_form_scripts(admin_route_prefix) %}
+<script>
+const adminRoutePrefix = "{{ admin_route_prefix }}";
+
+function toggleEmptyState(fieldName) {
+    const chipsContainer = document.getElementById(`${fieldName}-chips`);
+    const emptyState = chipsContainer.querySelector('[data-empty]');
+    const totalChips = chipsContainer.querySelectorAll('[data-value]').length;
+    if (emptyState) {
+        emptyState.classList.toggle('hidden', totalChips > 0);
+    }
+}
+
+function handleListInput(event, fieldName, fieldType) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        const input = document.getElementById(`${fieldName}-input`);
+        const value = input.value.trim();
+        if (!value) return;
+
+        // Validate based on field type
+        let processedValue = value;
+        let isValid = true;
+        let errorMessage = '';
+
+        if (fieldType === 'IntField') {
+            if (!/^-?\d+$/.test(value)) {
+                isValid = false;
+                errorMessage = 'Please enter a valid integer';
+            } else {
+                processedValue = parseInt(value);
+            }
+        } else if (fieldType === 'FloatField') {
+            if (!/^-?\d*\.?\d+$/.test(value)) {
+                isValid = false;
+                errorMessage = 'Please enter a valid number';
+            } else {
+                processedValue = parseFloat(value);
+            }
+        } else if (fieldType === 'ObjectIdField' || fieldType === 'ReferenceField') {
+            if (!/^[0-9a-fA-F]{24}$/.test(value)) {
+                isValid = false;
+                errorMessage = 'Please enter a valid ObjectId (24 hex chars)';
+            }
+        }
+
+        if (!isValid) {
+            alert(errorMessage);
+            return;
+        }
+
+        addListItem(fieldName, processedValue);
+        input.value = '';
+    }
+}
+
+function addListItem(fieldName, value) {
+    const chipsContainer = document.getElementById(`${fieldName}-chips`);
+    const hiddenInput = document.getElementById(fieldName);
+
+    // Create chip element
+    const chip = document.createElement('div');
+    chip.className = 'flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded';
+    chip.dataset.value = value;
+
+    chip.innerHTML = `
+        <span>${value}</span>
+        <button type="button" onclick="removeListItem('${fieldName}', '${value}')"
+                class="text-blue-600 hover:text-blue-800 font-bold">
+            &times;
+        </button>
+    `;
+    chipsContainer.appendChild(chip);
+
+    // Update hidden input
+    const currentValues = hiddenInput.value ? hiddenInput.value.split(',') : [];
+    if (!currentValues.includes(String(value))) {
+        currentValues.push(value);
+        hiddenInput.value = currentValues.join(',');
+    }
+
+    toggleEmptyState(fieldName);
+}
+
+function removeListItem(fieldName, value) {
+    const chipsContainer = document.getElementById(`${fieldName}-chips`);
+    const hiddenInput = document.getElementById(fieldName);
+
+    // Remove the chip
+    const chip = chipsContainer.querySelector(`[data-value="${value}"]`);
+    if (chip) {
+        chip.remove();
+    }
+
+    // Update hidden input
+    let currentValues = hiddenInput.value ? hiddenInput.value.split(',') : [];
+    currentValues = currentValues.filter(v => v !== String(value));
+    hiddenInput.value = currentValues.join(',');
+
+    toggleEmptyState(fieldName);
+}
+
+function handleFileSelect(input, fieldName) {
+    // Only submit the file input if files are actually selected
+    if (input.files.length === 0) {
+        input.removeAttribute('name');
+    } else {
+        const isMultiple = input.hasAttribute('multiple');
+        input.setAttribute('name', isMultiple ? `${fieldName}[]` : fieldName);
+    }
+
+    const files = Array.from(input.files).filter(f => f.name !== '');
+    if (files.length === 0) return;
+
+    const container = document.querySelector(`#${fieldName}-new-files`);
+    const filesList = container.querySelector('.space-y-2');
+
+    container.classList.remove('hidden');
+    filesList.innerHTML = files.map(file => `
+        <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-md">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 flex-shrink-0 rounded border border-gray-200 overflow-hidden">
+                    <div class="w-full h-full flex items-center justify-center bg-gray-50">
+                        <i class="fas fa-file text-gray-400"></i>
+                    </div>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-sm font-medium text-gray-700">${file.name}</span>
+                    <span class="text-xs text-gray-500">${(file.size / 1024 / 1024).toFixed(1)} MB</span>
+                </div>
+            </div>
+            <button type="button" onclick="removeNewFile('${fieldName}', '${file.name}')"
+                    class="text-red-500 hover:text-red-700 focus:outline-none transition-colors duration-200">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function removeNewFile(fieldName, fileName) {
+    const input = document.getElementById(`${fieldName}_input`);
+    const dt = new DataTransfer();
+
+    Array.from(input.files)
+        .filter(f => f.name !== fileName)
+        .forEach(f => dt.items.add(f));
+
+    input.files = dt.files;
+
+    if (dt.files.length === 0) {
+        document.querySelector(`#${fieldName}-new-files`).classList.add('hidden');
+    }
+    handleFileSelect(input, fieldName);
+}
+
+function removeFile(fieldName, fileName) {
+    // Add to deleted files
+    const deletedInput = document.getElementById(`${fieldName}_deleted`);
+    const deletedFiles = deletedInput.value ? deletedInput.value.split(',') : [];
+    if (!deletedFiles.includes(fileName)) {
+        deletedFiles.push(fileName);
+        deletedInput.value = deletedFiles.join(',');
+    }
+
+    // Remove from display
+    const fileElement = document.querySelector(`[data-file="${fileName}"]`);
+    if (fileElement) {
+        fileElement.remove();
+    }
+}
+
+function toggleAdvancedFields() {
+    const advancedFields = document.getElementById('advanced-fields');
+    const advancedIcon = document.getElementById('advanced-icon');
+    advancedFields.classList.toggle('hidden');
+    advancedIcon.classList.toggle('rotate-90');
+}
+
+// Handle drag and drop
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('input[type="file"]').forEach(input => {
+        const dropZone = input.closest('label');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-500', 'bg-blue-50');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+
+            const fieldName = input.id.replace('_input', '');
+            const dt = new DataTransfer();
+
+            Array.from(e.dataTransfer.files)
+                .filter(f => f.name !== '')
+                .forEach(f => dt.items.add(f));
+
+            input.files = dt.files;
+            handleFileSelect(input, fieldName);
+        });
+    });
+});
+</script>
+{% endmacro %}

@@ -2,7 +2,7 @@ import os
 
 
 PROJECT_DIRS = [
-    "pyrails",
+    "metro",
     "examples",
     "auth_demo",
     # "app",
