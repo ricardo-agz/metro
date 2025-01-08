@@ -30,7 +30,6 @@ class UserBase(BaseModel):
     is_staff = BooleanField(default=False)  # Can access admin site
     is_superuser = BooleanField(default=False)  # Has all permissions
     last_login = DateTimeField()
-    random_nums = ListField(IntField(), default=[])
 
     meta = {
         "abstract": True,

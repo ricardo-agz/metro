@@ -1,6 +1,9 @@
 {# new.html #}
 {% extends "base.html" %}
-{% from "_form_fields.html" import render_form_fields, render_form_scripts %}
+
+{# Import each macro from the file that actually defines it #}
+{% from "_form_fields.html" import render_form_fields %}
+{% from "_form_scripts.html" import render_form_scripts %}
 {% from "_components.html" import error_banner %}
 
 {% block title %}New {{ model_info.name }}{% endblock %}

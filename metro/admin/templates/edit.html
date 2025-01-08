@@ -1,6 +1,8 @@
 {# edit.html #}
 {% extends "base.html" %}
-{% from "_form_fields.html" import render_form_fields, render_form_scripts %}
+
+{% from "_form_fields.html" import render_form_fields %}
+{% from "_form_scripts.html" import render_form_scripts %}
 {% from "_components.html" import error_banner %}
 
 {% block title %}Edit {{ model_info.name }}{% endblock %}
