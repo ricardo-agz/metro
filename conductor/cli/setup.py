@@ -62,7 +62,7 @@ def remove_key(provider):
     click.echo(f"Removed {provider} API key if it existed")
 
 
-@setup.command(name="list")
+@setup.command()
 def list_keys():
     """List configured API keys"""
     click.echo("Configured API keys:")

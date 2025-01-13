@@ -464,6 +464,32 @@ ADMIN_PANEL_ROUTE_PREFIX = "/admin-panel"
 
 ---
 
+## Conductor
+
+"If the Rails generator was powered by an LLM"
+
+### Configuring API Keys for Conductor
+
+Add your OpenAI/Anthropic API keys to power Conductor
+
+`metro conductor setup add-key`
+
+`metro conductor setup list-keys`
+
+`metro conductor setup remove-key`
+
+### Initializing a New Project
+
+Generate the starter code for a Metro project from a project description using the `init` command:
+
+`metro conductor init <project_name> <description>`
+
+ex.
+
+`metro conductor init my-app "A social media app where users can make posts, comment, like, and share posts, and follow other users."`
+
+---
+
 ## Documentation and Help
 
 - **API Documentation**: http://localhost:8000/docs
