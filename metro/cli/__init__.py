@@ -5,6 +5,7 @@ import subprocess
 import sys
 import click
 import uvicorn
+import pkg_resources
 
 from .project import new
 from .generate import generate
@@ -17,11 +18,22 @@ def cli():
     pass
 
 
+def load_plugins():
+    """Load Metro CLI plugins"""
+    for entry_point in pkg_resources.iter_entry_points("metro.plugins"):
+        try:
+            entry_point.load()()
+        except Exception as e:
+            click.echo(f"Failed to load plugin {entry_point.name}: {e}", err=True)
+
+
 cli.add_command(new, name="new")
 cli.add_command(generate, name="generate")
 cli.add_command(generate, name="g")
 cli.add_command(db, name="db")
 cli.add_command(admin, name="admin")
+
+load_plugins()
 
 
 @cli.command()
