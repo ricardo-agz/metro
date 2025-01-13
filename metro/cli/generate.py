@@ -146,9 +146,9 @@ def model(model_name, fields):
 
     # Create final model file
     content = model_template.format(
-        model_name=pascal_case_name,
+        resource_name_pascal=pascal_case_name,
+        resource_name_snake=snake_case_name,
         fields=fields_code,
-        table_name=snake_case_name,
     )
     model_path = f"{models_dir}/{snake_case_name}.py"
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
@@ -184,25 +184,25 @@ def controller(controller_name, methods):
         if http_method.lower() == "get":
             methods_code += (
                 f"    @get('/{kebab_case_name}/{action_kebab}')\n"
-                f"    async def {action_snake}(self, request):\n"
+                f"    async def {action_snake}(self, request: Request):\n"
                 f"        pass\n\n"
             )
         elif http_method.lower() == "post":
             methods_code += (
                 f"    @post('/{kebab_case_name}/{action_kebab}')\n"
-                f"    async def {action_snake}(self, request):\n"
+                f"    async def {action_snake}(self, request: Request):\n"
                 f"        pass\n\n"
             )
         elif http_method.lower() == "put":
             methods_code += (
                 f"    @put('/{kebab_case_name}/{action_kebab}')\n"
-                f"    async def {action_snake}(self, request):\n"
+                f"    async def {action_snake}(self, request: Request):\n"
                 f"        pass\n\n"
             )
         elif http_method.lower() == "delete":
             methods_code += (
                 f"    @delete('/{kebab_case_name}/{action_kebab}')\n"
-                f"    async def {action_snake}(self, request):\n"
+                f"    async def {action_snake}(self, request: Request):\n"
                 f"        pass\n\n"
             )
         else:

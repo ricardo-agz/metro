@@ -277,7 +277,7 @@ class AdminPanelController(Controller):
                     value = form_data.get(field_name)
                     if value:
                         # Split comma-separated values and process based on field type
-                        values = [v.strip() for v in value.split(',') if v.strip()]
+                        values = [v.strip() for v in value.split(",") if v.strip()]
 
                         if isinstance(field.field, IntField):
                             values = [int(v) for v in values]
@@ -411,7 +411,7 @@ class AdminPanelController(Controller):
                     value = form_data.get(field_name)
                     if value is not None:
                         # Split comma-separated values and process based on field type
-                        values = [v.strip() for v in value.split(',') if v.strip()]
+                        values = [v.strip() for v in value.split(",") if v.strip()]
 
                         if isinstance(field.field, IntField):
                             values = [int(v) for v in values]

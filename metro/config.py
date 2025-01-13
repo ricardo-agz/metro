@@ -61,8 +61,6 @@ class Config:
         if os.path.exists(base_env_path):
             load_dotenv(base_env_path)
             self._set_env_vars_as_attributes()
-        else:
-            logger.info("No base .env file found")
 
     def _load_environment_env(self):
         """Load environment-specific .env file and set variables as attributes"""
@@ -98,9 +96,6 @@ class Config:
             config_path = os.path.join(cwd, "config", f"{self.ENV}.py")
 
             if not os.path.exists(config_path):
-                logger.warn(
-                    f"Configuration file for environment '{self.ENV}' not found at {config_path}."
-                )
                 return
 
             spec = importlib.util.spec_from_file_location(
