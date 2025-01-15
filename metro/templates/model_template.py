@@ -1,7 +1,7 @@
-model_template = """from metro.models import *
+model_template = """from metro.models import * {additional_imports}
 
 
-class {resource_name_pascal}(BaseModel):
+class {resource_name_pascal}({base_classes}):
 {fields}
     meta = {{
         "collection": "{resource_name_snake}"

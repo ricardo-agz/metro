@@ -91,6 +91,111 @@ This will generate:
 - Update `app/models/__init__.py` to import the new model 
 
 
+### Scaffold Generator Options
+
+```
+metro generate scaffold NAME [FIELDS...] [OPTIONS]
+```
+
+#### Available Options:
+
+`--actions`, `-a` (multiple): Define additional custom routes beyond CRUD operations
+
+* Format: `http_method:path (query: params) (body: params) (desc: description)`
+* Example: `-a "get:search (query: term:str) (desc: Search users)"`
+
+
+`--exclude-crud`, `-x` (multiple): Specify which CRUD operations to exclude
+
+* Choices: `index`, `show`, `create`, `update`, `delete`
+* Example: `-x delete -x update`
+
+
+`--model-inherits`: Specify base class(es) for the model
+
+* Format: Single class or comma-separated list
+* Example: `--model-inherits UserBase` or `--model-inherits "UserBase,SomeMixin"`
+
+
+`--controller-inherits`: Specify base class(es) for the controller
+
+* Format: Single class or comma-separated list
+* Example: `--controller-inherits AdminController`
+
+
+`--before-request`, `--before` (multiple): Add lifecycle hooks to run before each request
+
+* Format: `hook_name` or `hook_name:description`
+* Example: `--before "check_admin:Verify admin access"`
+
+
+`--after-request`, `--after` (multiple): Add lifecycle hooks to run after each request
+
+* Format: hook_name or hook_name:description
+* Example: --after "log_action:Log all activities"
+
+
+### Advanced Usage Examples
+
+Full CRUD scaffold with search and custom actions:
+
+```bash
+metro generate scaffold Product name:str price:float \
+  -a "get:search (query: term:str,min_price:float,max_price:float) (desc: Search products)" \
+  -a "post:bulk-update (body: ids:list,price:float) (desc: Update multiple products)"
+```
+
+Scaffold with limited CRUD and inheritance:
+
+```bash
+metro generate scaffold AdminUser email:str role:str \
+  --model-inherits "UserBase,AuditableMixin" \
+  --controller-inherits AdminController \
+  -x delete \
+  --before "check_admin:Verify admin permissions" \
+  --after "log_admin_action:Log admin activities"
+```
+
+Custom API endpoints with complex parameters:
+
+```bash
+metro generate scaffold Order items:list:ref:Product status:str \
+  -a "post:process/{id} (body: payment_method:str) (desc: Process order payment)" \
+  -a "get:user/{user_id} (query: status:str,date_from:datetime) (desc: Get user orders)" \
+  --controller-inherits "BaseController,PaymentMixin"
+```
+
+
+#### Adding Custom Routes
+Use the `--actions` or `-a` option to add additional routes beyond the standard CRUD endpoints:
+
+ex.
+```bash
+metro generate scaffold Comment post_id:ref:Post author:str content:str --actions "post:reply"
+# or
+metro generate scaffold Post title:str body:str -a "post:publish" -a "get:drafts"
+```
+
+This will generate the standard CRUD routes plus two additional routes:
+- `POST /posts/publish`
+- `GET /posts/drafts`
+
+
+#### Excluding CRUD Routes
+Use the `--exclude-crud` or `-x` option to exclude specific CRUD routes you don't need:
+
+```bash
+metro generate scaffold Post title:str body:str -x delete -x update
+```
+
+This will generate a scaffold without the delete and update endpoints.
+
+You can combine both options:
+
+```bash
+metro generate scaffold Post title:str body:str -a "post:publish" -x delete
+```
+
 ## Generating Models and Controllers
 
 You can also generate models and controllers individually.
@@ -101,6 +206,25 @@ To generate a `Comment` model with `post_id`, `author`, and `content` fields:
 
 ```
 metro generate model Comment post_id:str author:str content:str
+```
+
+### Model Generator Options
+
+```
+metro generate model NAME [FIELDS...] [OPTIONS]
+```
+
+#### Available Options:
+
+`--model-inherits`: Specify base class(es) for the model
+
+* Format: Single class or comma-separated list
+* Example: `--model-inherits UserBase` or `--model-inherits "UserBase,SomeMixin"`
+
+Example with all options:
+
+```
+metro generate model User email:str password:hashed_str profile:ref:Profile roles:list:str --model-inherits "UserBase"
 ```
 
 ### Generating a Controller
@@ -115,6 +239,40 @@ You can also pass in the routes to generate as arguments:
 
 ```
 metro generate controller Auth post:login post:register
+```
+
+### Controller Generator Options
+
+```
+metro generate controller NAME [ACTIONS...] [OPTIONS]
+```
+
+#### Available Options:
+
+`--controller-inherits`: Specify base class(es) for the controller
+
+* Format: Single class or comma-separated list
+* Example: `--controller-inherits AdminController`
+
+`--before-request`, `--before` (multiple): Add lifecycle hooks to run before each request
+
+* Format: `hook_name` or `hook_name:description`
+* Example: `--before "check_auth:Verify user authentication"`
+
+`--after-request`, `--after` (multiple): Add lifecycle hooks to run after each request
+
+* Format: `hook_name` or `hook_name:description`
+* Example: `--after "log_request:Log API request"`
+
+Example with all options:
+```
+metro generate controller Auth \
+  "post:login (body: email:str,password:str) (desc: User login)" \
+  "post:register (body: email:str,password:str,name:str) (desc: User registration)" \
+  "post:reset-password/{token} (body: password:str) (desc: Reset password)" \
+  --controller-inherits AuthBaseController \
+  --before "rate_limit:Apply rate limiting" \
+  --after "log_auth_attempt:Log authentication attempt"
 ```
 
 ## Field types

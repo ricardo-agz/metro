@@ -1,6 +1,5 @@
 from .controller_template import controller_template
 from .model_template import model_template
-from .scaffold_controller_template import scaffold_controller_template
 from .dockerfile_template import dockerfile_template
 from .docker_compose_template import docker_compose_template
 from .gitignore_template import gitignore_template

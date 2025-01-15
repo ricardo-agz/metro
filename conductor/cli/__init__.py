@@ -1,6 +1,7 @@
 # conductor/cli/__init__.py
 import os
 import subprocess
+import shlex
 import sys
 import threading
 import time
@@ -19,9 +20,9 @@ from conductor.utils import Spinner
 def run_command(command: str) -> tuple[bool, str]:
     """Execute a shell command and return success status and output"""
     try:
-        result = subprocess.run(
-            command.split(), capture_output=True, text=True, check=True
-        )
+        # Use shlex.split() to properly handle quoted arguments
+        args = shlex.split(command)
+        result = subprocess.run(args, capture_output=True, text=True, check=True)
         return True, result.stdout
     except subprocess.CalledProcessError as e:
         return False, e.stderr
@@ -38,7 +39,11 @@ def execute_commands(commands: list[str]) -> bool:
         spinner.stop()
 
         if not success:
-            click.echo(click.style(f"    Error: {output}", fg="bright_red"))
+            click.echo(
+                click.style(
+                    f"    Error running cmd: {cmd}\n\n{output}", fg="bright_red"
+                )
+            )
             return False
 
         click.echo(click.style(f"  ✓ {cmd}", fg="bright_green"))

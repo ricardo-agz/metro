@@ -1,6 +1,6 @@
 import click
-from ..db.mongodb import start_mongodb, stop_mongodb
-from ..config import Config
+from metro.db.mongodb import start_mongodb, stop_mongodb
+from metro.config import Config
 
 
 @click.group()

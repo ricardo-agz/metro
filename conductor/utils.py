@@ -1,4 +1,5 @@
 import re
+import shutil
 import sys
 import threading
 import time
@@ -39,11 +40,15 @@ class Spinner:
     def write_next(self):
         with self._screen_lock:
             if not self.spinner_visible:
+                term_width = shutil.get_terminal_size().columns
+                display_msg = self.message[
+                    : term_width - 2
+                ]  # Account for spinner and space
                 sys.stdout.write(
-                    f"\r{click.style(self.spinner[self.current], fg='bright_blue')} {self.message}"
+                    f"\r\033[K{click.style(self.spinner[self.current], fg='bright_blue')} {display_msg}"
                 )
-                self.current = (self.current + 1) % len(self.spinner)
                 sys.stdout.flush()
+                self.current = (self.current + 1) % len(self.spinner)
 
     def run(self):
         while self.busy:

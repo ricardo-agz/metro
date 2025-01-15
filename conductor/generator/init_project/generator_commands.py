@@ -1,10 +1,22 @@
-import time
-
 import click
+import os
 
 from conductor.generator.init_project.design_draft import init_project_design_draft
 from conductor.llms import completion
 from conductor.utils import extract_xml_content, Spinner
+
+
+curr_path = os.path.dirname(os.path.abspath(__file__))
+
+with open(os.path.join(curr_path, "metro_docs/generator_commands.md"), "r") as file:
+    METRO_GENERATOR_COMMANDS_DOCS = file.read()
+
+with open(os.path.join(curr_path, "./metro_docs/base_model_examples.md"), "r") as file:
+    METRO_BASE_MODEL_EXAMPLES = file.read()
+
+with open(os.path.join(curr_path, "metro_docs/controller_lifecycle.md"), "r") as file:
+    METRO_CONTROLLER_LIFECYCLE_DOCS = file.read()
+
 
 PROMPT = """
 You are Conductor, an expert AI in designing backend APIs for projects using Metro API, a batteries-included Python web 
@@ -19,189 +31,68 @@ This is a brief description of the project's main purpose and features.
 This is a detailed design draft that includes information about the application overview, user stories, data schema, 
 API endpoints, and other considerations.
 
-Carefully analyze the project description and design draft. Pay special attention to the data schema and API endpoints 
-sections, as these will be crucial for generating the appropriate Metro commands.
+Project Analysis Guidelines:
 
-Based on your analysis, generate a list of Metro commands to scaffold the initial structure of the project. Follow 
-these guidelines:
+1. Data Model Architecture
+   - Map out all models and their relationships from the data schema
+   - Identify model dependencies through ref: and list:ref: fields
+   - Plan generation order to ensure dependent models are created after their dependencies
+   - Example: If Comment has author:ref:User and post:ref:Post, generate User first, then Post, then Comment
 
-1. Start with model generation commands, as they form the foundation of the data structure.
-2. Follow with controller generation commands to create the necessary route handlers.
-3. Use scaffold generation commands when appropriate to create both models and controllers for primary resources.
-4. Ensure that all required fields, relationships, and special field types are correctly specified in the commands.
-5. Order the commands logically, typically starting with user-related models and progressing to dependent resources.
+2. Controller Architecture
+   - Analyze API endpoints to identify authentication requirements:
+     * Public endpoints (no auth)
+     * User endpoints (require authentication)
+     * Admin endpoints (require elevated privileges)
+   - Identify shared behaviors across endpoints that suggest need for base controllers
+   - Plan controller inheritance hierarchy before generating specific controllers
 
-Provide your output in the following format:
-<metro_commands>
-[List your generated Metro commands here, one per line]
-</metro_commands>
+3. Resource Generation Strategy
+   Choose the appropriate generation approach for each component:
 
-Here is the relevant documentation from the Metro API framework docs regarding generator commands:
+   Use metro generate scaffold when:
+   - The resource needs full CRUD operations
+   - The model and controller are tightly coupled
+   - The resource is a primary entity in your system
+   Example: A Post resource that needs create, read, update, delete endpoints
+
+   Use metro generate model when:
+   - The model is primarily referenced by other models
+   - No direct API endpoints are needed
+   - The model represents supporting data
+   Example: A Category model that's only referenced by other models
+
+   Use metro generate controller when:
+   - The controller handles auth or utility endpoints
+   - The endpoints don't map to a single model
+   - The controller implements shared behavior
+   Example: An Auth controller for login/register endpoints
+
+4. Authentication Implementation (if needed)
+   When the project requires user authentication:
+   - Create an Auth controller first for login/register endpoints (or if the project description outlines a specific implementation strategy, follow that)
+   - Use UserBase inheritance for the User model (skip defining fields already in UserBase) (unless specified otherwise)
+   - Create an Authenticated controller or Protected controller that controllers with protected routes inherit from (unless specified otherwise)
+   - Consider admin base controllers for privileged operations (if needed)
+
+<metro_documentation_and_features>
+Metro Framework Documentation and Features
+
+1. Generator Commands Documentation
+This documentation describes the available Metro generator commands and their options. Your task is to:
+- Use these commands to create the project scaffold
+- Follow the syntax exactly as shown
+- Choose the appropriate generator type for each resource
+
 <metro_generator_documentation>
-## Scaffolding Resources
-
-Metro includes a scaffold generator to quickly create models, controllers, and route definitions for a new resource.
-
-To generate a scaffold for a `Post` resource with `title` and `body` fields:
-
-```
-metro generate scaffold Post title:str body:str
-```
-
-This will generate:
-
-- `app/models/post.py` with a `Post` model class
-- `app/controllers/posts_controller.py` with CRUD route handlers
-- Update `app/controllers/__init__.py` to import the new controller
-- Update `app/models/__init__.py` to import the new model 
-
-
-## Generating Models and Controllers
-
-You can also generate models and controllers individually.
-
-### Generating a Model
-
-To generate a `Comment` model with `post_id`, `author`, and `content` fields:
-
-```
-metro generate model Comment post_id:str author:str content:str
-```
-
-### Generating a Controller
-
-To generate a controller for `Auth` routes:
-
-```
-metro generate controller Auth
-```
-
-You can also pass in the routes to generate as arguments:
-
-```
-metro generate controller Auth post:login post:register
-```
-
-## Field types
-
-### Basic Field Types:
-`str`, `int`, `float`, `bool`, `datetime`, `date`, `dict`, `list`.
-
-
-### Special Field Types:
-`ref`, `file`, `list:ref`, `list:file`, `hashed_str`.
-
-### Defining Model Relationships
-
-You can define relationships between models using the following syntax:
-
-- **One-to-Many Relationship**: Use the `ref:` prefix followed by the related model name.
-
-```
-metro generate model Post author:ref:User
-```
-
-This will generate a `Post` model with an `author` field referencing the `User` model.
-
-- **Many-to-Many Relationship**: Use `list:` and `ref:` together.
-
-```
-metro generate model Student courses:list:ref:Course
-```
-
-This will generate a `Student` model with a `courses` field that is a list of references to `Course` models.
-
-### Field Modifiers
-`_`, `^` are used to define a field as optional or unique.
-
-#### Optional Field: 
-Append `_` to the field name to mark it as optional.
-
-```
-metro generate model User email_:str
-```
-
-This will generate a `User` model with an optional `email` field.
-
-#### Unique Field: 
-Append `^` to the field name to specify it as unique.
-
-```
-metro generate model User username^:str
-```
-
-This will generate a `User` model with a unique `username` field.
-
-## Specialty Field Types
-
-### Hashed Field 
-`hashed_str` is a special field type that automatically hashes the value before storing it in the database.
-
-```
-metro generate model User name:str password_hashed:str
-```
-
-This will generate a `User` model with a `password` field stored as a hashed value.
-
-### File Fields
-`file` and `list:file` are special field types for handling file uploads. They automatically upload
-files to the specified storage backend (local filesystem, AWS S3, etc.) and store the file path and file metadata in the database.
-
-- **`file`**: Generates a single `FileField` on the model.
-- **`list:file`**: Generates a `FileListField`, allowing multiple files.
-
-Example usage:
-```
-metro generate model User avatar:file
-metro generate model Post attachments:list:file
-```
-
-This will generate the following model classes:
-
-```python
-class User(BaseModel):
-    avatar = FileField()
-    
-class Post(BaseModel):
-    attachments = FileListField()
-```
-
-Uploading files to s3 then becomes as easy as:
-
-```python
-# Set an individual file field
-@put('/users/{id}/update-avatar')
-async def update_avatar(
-    self,
-    id: str,
-    avatar: UploadFile = File(None),
-):
-    user = User.find_by_id(id=id)
-    if avatar:
-        # This stages the file for upload
-        user.avatar = avatar
-        # This actually uploads the file and stores the metadata in the database
-        user.save()
-    
-    return user.to_dict()
-
-# Work with a list of files 
-@post('/posts/{id}/upload-attachments')
-async def upload_attachments(
-    self,
-    id: str,
-    attachments: List[UploadFile] = File(None),
-):
-    post = Post.find_by_id(id=id)
-    if attachments:
-        # This stages the new files for upload
-        post.attachments.extend(attachments)
-        # This actually uploads the files and adds appends to the attachments list in the db with the new metadata
-        post.save()
-    
-    return post.to_dict()
-```
+{{METRO_GENERATOR_COMMANDS_DOCS}}
 </metro_generator_documentation>
+
+The above documentation outlines the core generator commands available in Metro. When generating your commands:
+- Pay attention to the field type syntax and modifiers
+- Note the available options for each generator type
+- Review the examples for proper command structure
+- Understand how scaffolds differ from individual generators
 
 Remember to adhere to Metro syntax and best practices:
 - Use `metro generate model` for creating models
@@ -216,10 +107,173 @@ Remember to adhere to Metro syntax and best practices:
 - Timestamp fields for creation and last update like created_at and updated_at are automatically added and are not 
 required in the model definition.
 
-Ensure that your generated commands cover all necessary models, controllers, and relationships described in the design 
-draft. If you encounter any ambiguities or need to make assumptions, note them briefly after the command list.
+2. Controller Lifecycle Management
+<metro_controller_lifecycle>
+{{METRO_CONTROLLER_LIFECYCLE_DOCS}}
+</metro_controller_lifecycle>
 
-Remember your final output for the Metro commands should be enclosed in the `<metro_commands>` XML tags.
+The controller lifecycle documentation above is crucial for:
+- Understanding how before_request and after_request hooks work
+- Planning your controller inheritance hierarchy
+- Implementing authentication and authorization efficiently
+- Avoiding code duplication across controllers
+
+Key Pattern: If you find yourself repeating the same hooks (like authentication checks) across multiple controllers:
+1. Create a base controller with the shared functionality
+2. Use meaningful names for base controllers (e.g., "AuthenticatedController" not "BaseController")
+3. Have specific controllers inherit from this base
+4. Remember that inherited hooks run on EVERY request to controllers that inherit them
+
+3. Built-in Base Models
+<metro_base_model_examples>
+{{METRO_BASE_MODEL_EXAMPLES}}
+</metro_base_model_examples>
+
+Metro provides built-in base models to reduce boilerplate code. Currently available:
+* UserBase - For user authentication and management
+
+UserBase Model Details:
+```python
+class UserBase(BaseModel):
+    username = StringField(required=True, unique=True, max_length=150)
+    email = EmailField(required=True, unique=True)
+    password_hash = HashedField(required=True)
+    is_staff = BooleanField(default=False)  # Can access admin site
+    is_superuser = BooleanField(default=False)  # Has all permissions
+    last_login = DateTimeField()
+    
+    @classmethod
+    def find_by_username(cls, username: str) -> Optional["UserBase"]:
+        '''Find a user by username'''
+        ...
+
+    @classmethod
+    def authenticate(cls, identifier: str, password: str) -> Optional["UserBase"]:
+        '''Authenticate a user by username or email and password'''
+        ...
+
+    def get_auth_token(self, expires_in: int = 3600, secret_key: str = None) -> str:
+        '''
+        Generate a JWT token for the user
+
+        Args:
+            expires_in: Token expiration time in seconds (default: 1 hour)
+            secret_key: The secret key to sign the token (default: config.JWT_SECRET_KEY)
+        '''
+        ...
+
+    @classmethod
+    def verify_auth_token(cls, token: str, secret_key: str = None) -> Optional["UserBase"]:
+        '''
+        Verify a JWT token and return the corresponding user
+
+        Args:
+            token: The JWT token to verify
+            secret_key: The secret key used to sign the token
+
+        Returns:
+            The user object if token is valid, None otherwise
+        '''
+        ...
+```
+
+When using UserBase:
+
+Inherit from it using --model-inherits UserBase
+Do NOT redefine fields already provided by UserBase (username, email, password_hash, etc.)
+Only add fields specific to your application's user requirements
+UserBase automatically provides authentication and token management methods
+
+Example Usage:
+# Correct: Only adding fields not in UserBase
+`metro generate scaffold User additional_field:str --model-inherits UserBase`
+
+# Incorrect: Redefining UserBase fields
+`metro generate scaffold User username:str email:str password:str  # Don't do this!`
+
+Inheritance Rules:
+
+You can ONLY inherit from:
+* Models provided by the Metro framework (currently only UserBase)
+* Models you have already generated in your command sequence
+
+
+Never inherit from models that haven't been generated yet or aren't part of the Metro framework.
+</metro_documentation_and_features>
+
+Provide your response in the following format:
+
+<initial_thoughts>
+Your analysis should address:
+1. Model Dependency Analysis
+   - Complete list of models needed
+   - Dependencies between models
+   - Generation order considering dependencies
+
+2. Controller Strategy
+   - Required base controllers
+   - Controller inheritance hierarchy
+   - Authentication/authorization requirements
+
+3. Resource Generation Plan
+   - Which resources need full scaffolds
+   - Which need only models
+   - Which need only controllers
+
+4. Generation Sequence
+   - Ordered list of generations
+   - Reasoning for the order
+   - Handling of dependencies
+</initial_thoughts>
+
+<rough_draft_commands>
+# Commands should be ordered by dependencies, with base/auth controllers first if needed
+# Include brief comments explaining key decisions
+[List your initial Metro commands here, one per line]
+</rough_draft_commands>
+
+<reflection>
+Analyze your generated commands:
+1. Best Practices
+    - Do all controllers, resources, and models follow Metro conventions?
+    - Do all controllers, resources, and models have descriptive names? Overly generic names like (BaseController) 
+    should be avoided unless they contain necessary shared functionality that is required by EVERY controller in the 
+    project. 
+
+2. Dependency Correctness
+   - Are models generated in correct order?
+   - Are all relationships properly defined?
+
+3. Controller Structure
+   - Is the controller hierarchy logical?
+   - Are shared behaviors properly abstracted?
+   
+4. Authentication Integration (if needed)
+   - Is UserBase properly leveraged if authentication is required?
+   - Are auth checks implemented efficiently?
+   - Does the auth implementation match any specific requirements from the project description?
+   - Are protected routes properly secured through controller inheritance?
+
+5. Completeness Check
+   - Do commands cover all functional requirements?
+   - Are all necessary relationships defined?
+   - Is the implementation DRY (Don't Repeat Yourself)?
+</reflection>
+
+<metro_commands>
+[Your final, validated Metro commands here, one per line]
+</metro_commands>
+
+[Rest of the documentation sections remain the same, but move the UserBase example to after the basic syntax rules for better flow]
+
+Remember:
+1. Order matters - generate models before they're referenced
+2. Don't duplicate auth logic - use base controllers
+3. Only include fields not provided by UserBase when inheriting
+4. Follow Metro syntax exactly
+5. Consider each resource's full lifecycle
+6. Think carefully about controller inheritance
+7. Use appropriate field types and modifiers
 """
 
 
@@ -237,11 +291,58 @@ Remember your final output for the Metro commands should be enclosed in the `<me
 """
 
 
+def extract_commands(commands_str: str) -> list[str]:
+    """
+    Extract commands from a string, properly handling multi-line commands using backslash.
+
+    Args:
+        commands_str: String containing Metro commands, potentially multi-line
+
+    Returns:
+        List of complete commands
+    """
+    commands = []
+    current_command = []
+
+    # Split into lines and clean each line
+    lines = [line.strip() for line in commands_str.split("\n")]
+
+    for line in lines:
+        # Skip empty lines and comments
+        if not line or line.startswith("#"):
+            continue
+
+        # If line ends with backslash, accumulate into current command
+        if line.endswith("\\"):
+            current_command.append(line[:-1].strip())  # Remove backslash and whitespace
+        else:
+            # Add this line to current command and complete it
+            current_command.append(line)
+
+            # Join the accumulated command parts with spaces
+            full_command = " ".join(current_command).strip()
+            if full_command:  # Only add non-empty commands
+                commands.append(full_command)
+            current_command = []  # Reset for next command
+
+    # Handle case where last command ends with backslash
+    if current_command:
+        full_command = " ".join(current_command).strip()
+        if full_command:
+            commands.append(full_command)
+
+    return commands
+
+
 def init_project_generator_commands(
     description: str, design_draft: str, feedback: list[tuple[list[str], str]] = None
 ) -> list[str]:
-    prompt = PROMPT.replace("{{PROJECT_DESCRIPTION}}", description).replace(
-        "{{DESIGN_DRAFT}}", design_draft
+    prompt = (
+        PROMPT.replace("{{PROJECT_DESCRIPTION}}", description)
+        .replace("{{DESIGN_DRAFT}}", design_draft)
+        .replace("{{METRO_GENERATOR_COMMANDS_DOCS}}", METRO_GENERATOR_COMMANDS_DOCS)
+        .replace("{{METRO_BASE_MODEL_EXAMPLES}}", METRO_BASE_MODEL_EXAMPLES)
+        .replace("{{METRO_CONTROLLER_LIFECYCLE_DOCS}}", METRO_CONTROLLER_LIFECYCLE_DOCS)
     )
 
     messages = [
@@ -263,10 +364,12 @@ def init_project_generator_commands(
     # Extract the completion content
     completion_content = completion_response.choices[0].message.content
 
+    print("$$$$$$ COMPLETION CONTENT $$$$$$")
+    print(completion_content)
+    print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+
     commands_str = extract_xml_content(completion_content, "metro_commands")
-    commands = [
-        c for c in commands_str.split("\n") if c.strip() and not c.startswith("#")
-    ]
+    commands = extract_commands(commands_str)
 
     return commands
 
@@ -281,7 +384,7 @@ def handle_feedback_loop(
     while True:
         click.echo("\nGenerated Metro commands:")
         for cmd in current_commands:
-            click.echo(click.style(f"  {cmd}", fg="bright_blue"))
+            click.echo(click.style(f"  >> {cmd}\n", fg="bright_blue"))
 
         if click.confirm("\nAccept these commands?", default=True):
             return current_commands

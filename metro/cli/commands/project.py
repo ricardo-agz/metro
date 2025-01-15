@@ -1,7 +1,7 @@
 import re
-
 import click
 import os
+
 from metro.templates import (
     docker_compose_template,
     dockerfile_template,
