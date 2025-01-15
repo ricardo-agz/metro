@@ -42,6 +42,11 @@ from metro.cli.commands.generate.model import generate_model
     multiple=True,
     help="Lifecycle hooks to run after each request.",
 )
+@click.option(
+    "--index",
+    multiple=True,
+    help="Add compound index. Format: 'field1,field2[unique,sparse,desc]'",
+)
 def scaffold(
     name,
     fields,
@@ -51,6 +56,7 @@ def scaffold(
     controller_inherits,
     before_request,
     after_request,
+    index,
 ):
     """
     Generate a model and controller with CRUD functionality.
@@ -97,7 +103,7 @@ def scaffold(
     )
 
     output = generate_model(
-        model_name=name, fields=fields, model_inherits=model_inherits
+        model_name=name, fields=fields, model_inherits=model_inherits, index=index
     )
     click.echo(
         click.style(

@@ -305,13 +305,13 @@ metro generate model Student courses:list:ref:Course
 This will generate a `Student` model with a `courses` field that is a list of references to `Course` models.
 
 ### Field Modifiers
-`_`, `^` are used to define a field as optional or unique.
+`?`, `^`, `@` are used to define a field as optional, unique, or an index respectively.
 
 #### Optional Field: 
-Append `_` to the field name to mark it as optional.
+Append `?` to the field name to mark it as optional.
 
 ```
-metro generate model User email_:str
+metro generate model User email?:str
 ```
 
 This will generate a `User` model with an optional `email` field.
@@ -324,6 +324,94 @@ metro generate model User username^:str
 ```
 
 This will generate a `User` model with a unique `username` field.
+
+#### Indexed Field:
+Append `@` to the field name to create an index for that field.
+
+```bash
+metro generate model Product price@:float category@:str
+```
+
+This will generate a `Product` model with indexed `price` and `category` fields for faster querying and filtering.
+
+#### Field Choices:
+For string fields that should only accept specific values, use the `choices` syntax with optional default value (marked with `*`):
+
+```bash
+# required role with no default value (role must be specified)
+metro generate model User role:string:choices[user,admin]
+
+# optional role with default value of 'user'
+metro generate model User role:string:choices[user*,admin]  # note it would be redundant to add ? here since the default value makes it optional
+```
+
+You can combine these modifiers to create fields with multiple attributes:
+
+```bash
+metro generate model Product \
+  sku^:str \                                  # unique identifier 
+  name^:str \                                 # unique name
+  price@:float \                              # indexed for price filtering/sorting
+  stock@:int \                                # indexed for inventory queries
+  category@:str \                             # indexed for category filtering
+  description?:str \                          # optional description
+  status:string:choices[active*,discontinued] # enum with default value
+```
+
+#### Compound Indexes:
+Use the `--index` flag to create compound indexes that span multiple fields. The syntax supports various MongoDB index options:
+
+```bash
+# Basic compound index
+metro generate model Product name:str price:float --index "name,price"
+
+# Unique compound index
+metro generate model Product name:str price:float --index "name,price[unique]"
+
+# Compound index with descending order and sparse option
+metro generate model Order total:float --index "created_at,total[desc,sparse]"  # note that created_at is a built-in field so it doesn't need to be defined explicitly
+```
+
+You can specify multiple compound indexes:
+    
+```bash
+metro generate model Product \
+  name:str \
+  price:float \
+  category:str \
+  --index "name,price[unique]" \
+  --index "category,created_at[desc,sparse]"
+```
+
+This will generate:
+
+```python
+class Product(BaseModel):
+    name = StringField(required=True)
+    price = FloatField(required=True)
+    category = StringField(required=True) 
+    created_at = DateTimeField(required=True)
+
+    meta = {
+        "collection": "product",
+        'indexes': [
+            {
+                'fields': ['name', 'price'],
+                'unique': True
+            },
+            {
+                'fields': ['-category', '-created_at'],
+                'sparse': True
+            }
+        ],
+    }
+```
+    
+#### Index Options:
+
+* `unique`: Ensures no two documents can have the same values for these fields
+* `sparse`: Only includes documents in the index if they have values for all indexed fields
+* `desc`: Creates the index in descending order (useful for sorting)
 
 ## Specialty Field Types
 
@@ -383,7 +471,7 @@ async def update_avatar(
 async def upload_attachments(
     self,
     id: str,
-    attachments: List[UploadFile] = File(None),
+    attachments: list[UploadFile] = File(None),
 ):
     post = Post.find_by_id(id=id)
     if attachments:

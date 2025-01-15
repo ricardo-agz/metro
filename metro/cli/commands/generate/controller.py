@@ -8,7 +8,6 @@ from metro.cli.utils import (
     get_default_action_name,
     process_controller_inheritance,
     process_fields,
-    clean_up_file_whitespace,
 )
 from metro.templates import controller_template
 from metro.utils import (
@@ -16,7 +15,7 @@ from metro.utils import (
     to_pascal_case,
     pluralize,
 )
-from metro.utils.file_operations import insert_line_without_duplicating
+from metro.utils.file_operations import insert_line_without_duplicating, format_python
 from metro.config import config
 
 
@@ -370,7 +369,13 @@ def generate_controller(
 
     controller_actions = []
     if is_scaffold:
-        _, crud_pydantic_code = process_fields(resource_fields)
+        processed_fields = process_fields(resource_fields, indexes=())
+        _, crud_pydantic_code, fields_additional_imports = (
+            processed_fields.fields_code,
+            processed_fields.pydantic_code,
+            processed_fields.additional_imports,
+        )
+        additional_imports += "\n" + "\n".join(fields_additional_imports)
 
         crud_methods = generate_crud_methods(
             url_prefix=url_prefix,
@@ -409,7 +414,7 @@ def generate_controller(
         base_controllers=base_controllers,
     )
 
-    controller_content = clean_up_file_whitespace(controller_content)
+    controller_content = format_python(controller_content)
 
     controller_path = f"{controllers_dir}/{controller_name_snake}_controller.py"
     os.makedirs(os.path.dirname(controller_path), exist_ok=True)

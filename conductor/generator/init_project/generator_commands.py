@@ -21,7 +21,7 @@ with open(os.path.join(curr_path, "metro_docs/controller_lifecycle.md"), "r") as
 PROMPT = """
 You are Conductor, an expert AI in designing backend APIs for projects using Metro API, a batteries-included Python web 
 framework, similar to Django. Your task is to generate Metro commands to implement the starting scaffold for a given 
-project based on a project description and a high-level design draft.
+project based on a project description and a technical design doc.
 
 You will be provided with two inputs:
 1. <project_description>{{PROJECT_DESCRIPTION}}</project_description>
@@ -31,49 +31,7 @@ This is a brief description of the project's main purpose and features.
 This is a detailed design draft that includes information about the application overview, user stories, data schema, 
 API endpoints, and other considerations.
 
-Project Analysis Guidelines:
-
-1. Data Model Architecture
-   - Map out all models and their relationships from the data schema
-   - Identify model dependencies through ref: and list:ref: fields
-   - Plan generation order to ensure dependent models are created after their dependencies
-   - Example: If Comment has author:ref:User and post:ref:Post, generate User first, then Post, then Comment
-
-2. Controller Architecture
-   - Analyze API endpoints to identify authentication requirements:
-     * Public endpoints (no auth)
-     * User endpoints (require authentication)
-     * Admin endpoints (require elevated privileges)
-   - Identify shared behaviors across endpoints that suggest need for base controllers
-   - Plan controller inheritance hierarchy before generating specific controllers
-
-3. Resource Generation Strategy
-   Choose the appropriate generation approach for each component:
-
-   Use metro generate scaffold when:
-   - The resource needs full CRUD operations
-   - The model and controller are tightly coupled
-   - The resource is a primary entity in your system
-   Example: A Post resource that needs create, read, update, delete endpoints
-
-   Use metro generate model when:
-   - The model is primarily referenced by other models
-   - No direct API endpoints are needed
-   - The model represents supporting data
-   Example: A Category model that's only referenced by other models
-
-   Use metro generate controller when:
-   - The controller handles auth or utility endpoints
-   - The endpoints don't map to a single model
-   - The controller implements shared behavior
-   Example: An Auth controller for login/register endpoints
-
-4. Authentication Implementation (if needed)
-   When the project requires user authentication:
-   - Create an Auth controller first for login/register endpoints (or if the project description outlines a specific implementation strategy, follow that)
-   - Use UserBase inheritance for the User model (skip defining fields already in UserBase) (unless specified otherwise)
-   - Create an Authenticated controller or Protected controller that controllers with protected routes inherit from (unless specified otherwise)
-   - Consider admin base controllers for privileged operations (if needed)
+Read through the provided Metro documentation which will be required to generate the output commands
 
 <metro_documentation_and_features>
 Metro Framework Documentation and Features
@@ -101,7 +59,9 @@ Remember to adhere to Metro syntax and best practices:
 - Specify field types correctly (str, int, bool, datetime, etc.)
 - Use `ref:` for relationships between models
 - Use `list:` for array fields
-- Use `^` for unique fields and `_` for optional fields
+- Use `^` for unique fields
+- Use `?` for optional fields
+- Use `@` for indexed fields
 - Use `hashed_str` for password fields
 - Use `file` or `list:file` for file upload fields
 - Timestamp fields for creation and last update like created_at and updated_at are automatically added and are not 
@@ -204,76 +164,89 @@ Never inherit from models that haven't been generated yet or aren't part of the 
 Provide your response in the following format:
 
 <initial_thoughts>
-Your analysis should address:
-1. Model Dependency Analysis
-   - Complete list of models needed
-   - Dependencies between models
-   - Generation order considering dependencies
 
-2. Controller Strategy
-   - Required base controllers
-   - Controller inheritance hierarchy
-   - Authentication/authorization requirements
+1. High-level Generation strategy
+    <required_models>
+    [List all models defined in the technical design doc and their respective fields]
+    </required_models>
+    
+    <api_routes_by_controller>
+    [Map each of the api endpoints defined in the technical design doc to an appropriate associated controller and 
+    give an action name for each endpoint]
+    </api_routes_by_controller> 
 
-3. Resource Generation Plan
-   - Which resources need full scaffolds
-   - Which need only models
-   - Which need only controllers
-
-4. Generation Sequence
-   - Ordered list of generations
-   - Reasoning for the order
-   - Handling of dependencies
+    <scaffolds>
+    [resource for resource in required_models if ResourceNameController exists in api_routes_by_controller]
+    </scaffolds>
+    
+2. Additional Functionality
+    <before_request_hooks> (optional)
+    [For each controller defined in api_routes_by_controller, think about any checks or middleware that would be needed
+    before the request is handled]
+    </before_request_hooks>
+    
+    <after_request_hooks> (optional)
+    [For each controller defined in api_routes_by_controller, think about any cleanup or logic that would need to be 
+    executed synchronously after the request is handled but before it is returned to the client]
+    </after_request_hooks>
+    
+3. Best Practices
+    <DRY_check> (optional)
+    [Think about any shared functionality that is repeated across multiple controllers, could this be abstracted into an
+    appropriate base controller that the other controllers inherit from? If this was already accounted for in the 
+    sections above, you can just mention that here]
+    </DRY_check>
+    
+4. Reflection
+    <revisions>
+    [If you discovered any repeated shared functionality in the DRY check that was solved by a new base controller you 
+    haven't generated yet, include that here, along with any changes that would happen to the existing controllers.
+    Carefully look at what you've thought of so far in this initial thoughts section and carefully re-read the design 
+    doc. Does your current plan cover all the requirements? Are there any changes you'd like to make?]
+    </revisions>    
 </initial_thoughts>
 
 <rough_draft_commands>
 # Commands should be ordered by dependencies, with base/auth controllers first if needed
 # Include brief comments explaining key decisions
-[List your initial Metro commands here, one per line]
+[List your Metro generation commands here, one per line]
 </rough_draft_commands>
 
 <reflection>
-Analyze your generated commands:
-1. Best Practices
-    - Do all controllers, resources, and models follow Metro conventions?
-    - Do all controllers, resources, and models have descriptive names? Overly generic names like (BaseController) 
-    should be avoided unless they contain necessary shared functionality that is required by EVERY controller in the 
-    project. 
-
-2. Dependency Correctness
-   - Are models generated in correct order?
-   - Are all relationships properly defined?
-
-3. Controller Structure
-   - Is the controller hierarchy logical?
-   - Are shared behaviors properly abstracted?
-   
-4. Authentication Integration (if needed)
-   - Is UserBase properly leveraged if authentication is required?
-   - Are auth checks implemented efficiently?
-   - Does the auth implementation match any specific requirements from the project description?
-   - Are protected routes properly secured through controller inheritance?
-
-5. Completeness Check
-   - Do commands cover all functional requirements?
-   - Are all necessary relationships defined?
-   - Is the implementation DRY (Don't Repeat Yourself)?
+Carefully re-read and analyze the technical design doc. 
+Go over all required functionalities, are they all handled by an endpoint included in the generated commands?
+Go over every API route, are they all covered in the generated commands?
+Go over every model in the data schema, are they all generated? Are all the fields correct? Are all:
+    - unique fields marked with the `^` suffix?
+    - optional fields marked with the `?` suffix?
+    - fields with an index marked with the `@` suffix?
+    - compound indexes defined correctly?
+    - relationships between models defined correctly?
+    - file fields handled by the `file` or `list:file` field type instead of an individual url string field? (unless specifically specified otherwise in the <project_description>
+Go over each of the generated commands, do they all:
+    - follow the Metro conventions and syntax?
+    - have descriptive names?
+    - not reference models or controllers that haven't been generated yet or aren't part of the Metro framework?
+Go over the order of the commands, are they generated in the correct order based on dependencies?
+Re-read the Metro documentation, are we making use of all the features that Metro provides? For example:
+    - hashed_str for password fields
+    - file or list:file for file upload fields
+    - user authentication is logic is inherited from the UserBase model (unless specifically specified otherwise in the <project_description>
+Re-read the Metro documentation and each of the generated commands. Do they all follow the correct syntax? Do any:
+    - have typos?
+    - mix up field modifier suffixes like `^`, `?`, `@` for something other than their intended use? 
 </reflection>
 
+<optimizations>
+[If you have any suggestions for optimizations or improvements that can be achieved through changes to the Metro 
+generation commands (and not through external logic outside of the scope of Metro commands), list them here.
+Write the bottleneck, how it can be optimized, and what the changes required to the Metro commands are.]
+</optimizations>
+
 <metro_commands>
-[Your final, validated Metro commands here, one per line]
+[Your final, validated Metro commands here, one per line. If no changes are needed, copy the rough draft commands here]
 </metro_commands>
 
-[Rest of the documentation sections remain the same, but move the UserBase example to after the basic syntax rules for better flow]
-
-Remember:
-1. Order matters - generate models before they're referenced
-2. Don't duplicate auth logic - use base controllers
-3. Only include fields not provided by UserBase when inheriting
-4. Follow Metro syntax exactly
-5. Consider each resource's full lifecycle
-6. Think carefully about controller inheritance
-7. Use appropriate field types and modifiers
 """
 
 
@@ -291,7 +264,7 @@ Remember your final output for the Metro commands should be enclosed in the `<me
 """
 
 
-def extract_commands(commands_str: str) -> list[str]:
+def extract_commands(commands_str: str) -> list[str] | None:
     """
     Extract commands from a string, properly handling multi-line commands using backslash.
 
@@ -306,6 +279,9 @@ def extract_commands(commands_str: str) -> list[str]:
 
     # Split into lines and clean each line
     lines = [line.strip() for line in commands_str.split("\n")]
+
+    if not any(["metro generate" in line for line in lines]):
+        return None
 
     for line in lines:
         # Skip empty lines and comments
@@ -359,6 +335,8 @@ def init_project_generator_commands(
     completion_response = completion(
         model="claude-3-5-sonnet-20241022",
         messages=messages,
+        temperature=1,
+        max_tokens=8192,
     )
 
     # Extract the completion content
@@ -369,7 +347,11 @@ def init_project_generator_commands(
     print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
 
     commands_str = extract_xml_content(completion_content, "metro_commands")
-    commands = extract_commands(commands_str)
+    commands = extract_commands(commands_str) if commands_str else None
+
+    if not commands:
+        commands_str = extract_xml_content(completion_content, "rough_draft_commands")
+        commands = extract_commands(commands_str)
 
     return commands
 

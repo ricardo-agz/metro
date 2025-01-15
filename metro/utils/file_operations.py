@@ -1,3 +1,7 @@
+import black
+import click
+
+
 def insert_line_without_duplicating(file_path, line):
     normalized_line = line.strip() + "\n"
 
@@ -18,3 +22,11 @@ def insert_line_without_duplicating(file_path, line):
 
     with open(file_path, "w") as f:
         f.writelines(lines)
+
+
+def format_python(source_code: str) -> str:
+    try:
+        return black.format_str(source_code, mode=black.FileMode())
+    except Exception as e:
+        click.echo(click.style(f"Error formatting code: {e}", fg="red"))
+        return source_code

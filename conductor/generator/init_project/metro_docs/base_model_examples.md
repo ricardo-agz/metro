@@ -3,7 +3,7 @@
 Let's create a User resource with some fields:
 
 ```bash
-metro generate scaffold User username^:str email^:str password_hash:hashed_str name:str bio_:str avatar_:file posts:list:ref:Post
+metro generate scaffold User username^:str email^:str password_hash:hashed_str name:str bio?:str avatar?:file posts:list:ref:Post
 ```` 
 
 :::info What did we just do?
@@ -11,7 +11,7 @@ The structure for a scaffold generator is this `metro generate scaffold Resource
 
 The suffix `^` at the end of a name marks it as unique (no 2 users can share the same username or email)
 
-The suffix `_` marks it as optional (users can choose to leave their bio blank)
+The suffix `?` marks it as optional (users can choose to leave their bio blank)
 
 `list:ref:Post` means this field will be a list of references to the Post model (which we still need to create)
 
@@ -68,7 +68,7 @@ class UserssController(Controller):
 Now, let's create a Post resource with some string content and an optional image. 
 
 ```bash
-metro g scaffold Post content:str image_:file author:ref:User
+metro g scaffold Post content:str image?:file author:ref:User
 ```
 
 (You can just use `g` as a shorthand for `generate`)

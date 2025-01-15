@@ -1,66 +1,7 @@
 import click
+from pydantic import BaseModel
 
 from metro.utils import mongoengine_type_mapping, pydantic_type_mapping, to_snake_case
-
-
-def clean_up_file_whitespace(text: str) -> str:
-    """Clean up excessive whitespace in Python code while respecting scope.
-
-    This function enforces the following rules:
-    - Maximum 2 consecutive empty lines at root level (indent=0)
-    - Maximum 1 consecutive empty line within indented blocks
-    - Ensures 2 empty lines before class definitions at root level
-    - Ensures 1 empty line when decreasing indentation level (except for closing brackets/braces and docstrings)
-    - Preserves indentation and internal formatting
-    - Strips trailing whitespace from each line
-    - Ensures file ends with single newline
-    """
-    lines = text.splitlines()
-    cleaned = []
-    consecutive_empty = 0
-    last_nonempty_indent = 0
-
-    for i, line in enumerate(lines):
-        # Get indentation level and check if line is empty
-        indent = len(line) - len(line.lstrip())
-        stripped_line = line.strip()
-        is_empty = not stripped_line
-        is_root_class = stripped_line.startswith("class ") and indent == 0
-
-        # Check if this line is just a closing bracket/brace/quote
-        is_closing = stripped_line in [")", "]", "}", '"""', "'''"]
-        # Check if next line (if exists) starts with a closing bracket/brace/quote
-        next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
-        next_is_closing = next_line in [")", "]", "}", '"""', "'''"]
-
-        if is_empty:
-            consecutive_empty += 1
-            if consecutive_empty <= (1 if last_nonempty_indent > 0 else 2):
-                cleaned.append("")
-        else:
-            if is_root_class:
-                while cleaned and cleaned[-1] == "":
-                    cleaned.pop()
-                cleaned.extend(["", ""])
-            # Only add newline for indentation decrease if:
-            # - Current line isn't a closing character
-            # - Next line isn't a closing character
-            # - We're actually decreasing indentation
-            # - We don't already have an empty line
-            elif (
-                indent < last_nonempty_indent
-                and not is_closing
-                and not next_is_closing
-                and cleaned
-                and cleaned[-1] != ""
-            ):
-                cleaned.append("")
-
-            consecutive_empty = 0
-            last_nonempty_indent = indent
-            cleaned.append(line.rstrip())
-
-    return "\n".join(cleaned).strip() + "\n"
 
 
 def process_inheritance(model_inherits: str) -> tuple[str, list[str]]:
@@ -118,7 +59,16 @@ def process_controller_inheritance(
     return base_controllers, additional_imports
 
 
-def process_fields(fields: tuple[str, ...]) -> tuple[str, str]:
+class ProcessFieldsOutput(BaseModel):
+    fields_code: str
+    pydantic_code: str
+    additional_imports: list[str]
+    meta_indexes: list[dict] = []  # For compound and regular indexes
+
+
+def process_fields(
+    fields: tuple[str, ...], indexes: tuple[str, ...]
+) -> ProcessFieldsOutput:
     """
     Process field definitions and generate model fields and Pydantic schemas.
 
@@ -130,6 +80,16 @@ def process_fields(fields: tuple[str, ...]) -> tuple[str, str]:
     """
     fields_code = ""
     pydantic_code = ""
+    has_choices = False
+    additional_imports = []
+
+    meta_indexes = []
+    for index_str in indexes:
+        try:
+            index_spec = process_index_option(index_str)
+            meta_indexes.append(index_spec)
+        except Exception as e:
+            raise click.BadParameter(f"Error processing index {index_str}: {str(e)}")
 
     for field in fields:
         if not field or not field.strip():
@@ -145,21 +105,33 @@ def process_fields(fields: tuple[str, ...]) -> tuple[str, str]:
             name = name.strip()
             type_ = type_.strip()
 
+            if ":choices[" in type_:
+                has_choices = True
+
             if not name or not type_:
                 raise click.BadParameter(
                     f"Invalid field format: {field}. Name and type cannot be empty"
                 )
 
             unique = name.endswith("^")
-            optional = name.endswith("_")
-            field_code, pydantic = process_field(name, type_, optional, unique)
+            optional = name.endswith("?")
+            indexed = name.endswith("@")
+            field_code, pydantic = process_field(name, type_, optional, unique, indexed)
             fields_code += field_code
             pydantic_code += pydantic
 
         except ValueError as e:
             raise click.BadParameter(f"Error processing field {field}: {str(e)}")
 
-    return fields_code, pydantic_code
+    if has_choices:
+        additional_imports.append("from typing import Literal")
+
+    return ProcessFieldsOutput(
+        fields_code=fields_code,
+        pydantic_code=pydantic_code,
+        additional_imports=additional_imports,
+        meta_indexes=meta_indexes,
+    )
 
 
 def parse_hook(hook_str: str) -> tuple[str, str]:
@@ -346,13 +318,77 @@ def get_default_action_name(
     return f"{http_method}_{resource_name}"
 
 
-def process_field(name, type_, optional=False, unique=False):
+def parse_field_choices(field_type: str) -> tuple[str, list[str] | None, str | None]:
+    """
+    Parse field type with optional choices syntax like 'string:choices[user*,admin]'.
+    Returns (base_type, choices, default_value).
+    """
+    if ":choices[" in field_type:
+        base_type, choices_part = field_type.split(":choices[")
+        if not choices_part.endswith("]"):
+            raise click.BadParameter(
+                f"Invalid choices syntax in {field_type}. Missing closing bracket.]"
+            )
+        choices = choices_part.rstrip("]").split(",")
+        if not choices:
+            raise click.BadParameter(f"No choices provided in {field_type}")
+
+        # Process choices and look for default
+        clean_choices = []
+        default_value = None
+
+        for choice in choices:
+            choice = choice.strip()
+            if choice.endswith("*"):
+                if default_value is not None:
+                    raise click.BadParameter(
+                        f"Multiple default values specified in {field_type}"
+                    )
+                default_value = choice.rstrip("*")
+                clean_choices.append(default_value)
+            else:
+                clean_choices.append(choice)
+
+        return base_type, clean_choices, default_value
+
+    return field_type, None, None
+
+
+def process_field(name, type_, optional=False, unique=False, indexed=False):
     """Centralized field processing logic."""
     fields_code = ""
     pydantic_code = ""
 
     # Strip markers from name
-    name = name.rstrip("^_")
+    name = name.rstrip("^@?")
+
+    base_type, choices, default_value = parse_field_choices(type_)
+
+    if choices:
+        # MongoDB field with choices
+        choices_str = ", ".join(f"'{choice}'" for choice in choices)
+        field_attrs = [f"choices=[{choices_str}]"]
+
+        if default_value:
+            field_attrs.append(f"default='{default_value}'")
+        elif not optional:
+            field_attrs.append("required=True")
+
+        if unique:
+            field_attrs.append("unique=True")
+        elif indexed:  # Only add db_index if not unique (since unique implies indexed)
+            field_attrs.append("db_index=True")
+
+        fields_code = f"    {name} = StringField({', '.join(field_attrs)})\n"
+
+        # For Pydantic, use Literal type for strict validation
+        choices_str = ", ".join(f'"{choice}"' for choice in choices)
+        if default_value:
+            pydantic_code = f'    {name}: Literal[{choices_str}] = "{default_value}"\n'
+        else:
+            pydantic_code = f"    {name}: Literal[{choices_str}]\n"
+
+        return fields_code, pydantic_code
 
     # 1) Hashed string
     if type_ == "hashed_str":
@@ -374,7 +410,11 @@ def process_field(name, type_, optional=False, unique=False):
         default = ", default=[]" if not optional else ""
 
         if inner_type == "file":
-            fields_code = f"    {name} = FileListField({default})\n"
+            attrs = []
+            if not optional:
+                attrs.append("default=[]")
+            attrs_str = f"({', '.join(attrs)})" if attrs else "()"
+            fields_code = f"    {name} = FileListField{attrs_str}\n"
 
         elif inner_type.startswith("ref:"):
             ref_model = inner_type[4:]
@@ -426,6 +466,8 @@ def process_field(name, type_, optional=False, unique=False):
             field_attrs.append("required=True")
         if unique:
             field_attrs.append("unique=True")
+        elif indexed:  # Only add db_index if not unique
+            field_attrs.append("db_index=True")
         if field_attrs:
             mongo_field = mongo_field.replace("()", f"({', '.join(field_attrs)})")
 
@@ -434,3 +476,47 @@ def process_field(name, type_, optional=False, unique=False):
         pydantic_code = f"    {name}: {pydantic_type}\n"
 
     return fields_code, pydantic_code
+
+
+def process_index_option(index_str: str) -> dict:
+    """
+    Process an index option string into a MongoEngine index specification.
+    """
+    # Split into fields and options
+    if "[" in index_str:
+        fields_part, options_part = index_str.rsplit("[", 1)
+        if not options_part.endswith("]"):
+            raise click.BadParameter(
+                f"Invalid index format: {index_str}. Missing closing bracket.]"
+            )
+        options_str = options_part.rstrip("]")
+        options = [opt.strip().lower() for opt in options_str.split(",")]
+    else:
+        fields_part = index_str
+        options = []
+
+    # Process fields
+    fields = []
+    for field in fields_part.split(","):
+        field = field.strip()
+        field.rstrip("^@?")  # Strip any markers
+
+        if not field:
+            raise click.BadParameter(f"Empty field in index specification: {index_str}")
+        # Add minus sign for descending order
+        if "desc" in options:
+            field = f"-{field}"
+        fields.append(field)
+
+    # If no special options, return simple tuple format
+    if not {"unique", "sparse"}.intersection(options):
+        return {"fields": tuple(fields)}
+
+    # Process options with special flags
+    index_spec = {"fields": fields}
+    if "unique" in options:
+        index_spec["unique"] = True
+    if "sparse" in options:
+        index_spec["sparse"] = True
+
+    return index_spec

@@ -6,14 +6,13 @@ from metro.cli.utils import (
     process_field,
     process_fields,
     process_inheritance,
-    clean_up_file_whitespace,
 )
 from metro.templates import model_template
 from metro.utils import (
     to_snake_case,
     to_pascal_case,
 )
-from metro.utils.file_operations import insert_line_without_duplicating
+from metro.utils.file_operations import insert_line_without_duplicating, format_python
 from metro.config import config
 
 
@@ -31,13 +30,43 @@ def generate_model(
     model_name: str,
     fields: tuple[str, ...],
     model_inherits: str = None,
+    index: tuple[str, ...] = (),
     additional_template_vars: dict = None,
 ) -> GenerateModelOutput:
     snake_case_name = to_snake_case(model_name)
     pascal_case_name = to_pascal_case(model_name)
 
     base_classes, additional_imports_list = process_inheritance(model_inherits)
-    fields_code, pydantic_code = process_fields(fields)
+    processed_fields = process_fields(fields, indexes=index)
+
+    meta_indexes = ""
+    if processed_fields.meta_indexes:
+        indexes_str = []
+        for idx in processed_fields.meta_indexes:
+            if "unique" in idx or "sparse" in idx:
+                # Complex index with options
+                fields_str = repr(idx["fields"])
+                options = []
+                if idx.get("unique"):
+                    options.append("'unique': True")
+                if idx.get("sparse"):
+                    options.append("'sparse': True")
+                indexes_str.append(f"{{'fields': {fields_str}, {', '.join(options)}}}")
+            else:
+                # Simple index
+                fields_str = repr(idx["fields"])
+                indexes_str.append(fields_str)
+
+        meta_indexes = (
+            f"\n        'indexes': [{', '.join(indexes_str)}]," if indexes_str else ""
+        )
+
+    fields_code, pydantic_code, fields_additional_imports = (
+        processed_fields.fields_code,
+        processed_fields.pydantic_code,
+        processed_fields.additional_imports,
+    )
+    additional_imports_list.extend(fields_additional_imports)
 
     additional_imports = (
         "\n" + "\n".join(additional_imports_list) if additional_imports_list else ""
@@ -49,13 +78,14 @@ def generate_model(
         "fields": fields_code,
         "base_classes": base_classes,
         "additional_imports": additional_imports,
+        "meta_indexes": meta_indexes,
     }
 
     if additional_template_vars:
         template_vars.update(additional_template_vars)
 
     content = model_template.format(**template_vars)
-    content = clean_up_file_whitespace(content)
+    content = format_python(content)
 
     # Create the model file
     model_path = f"{models_dir}/{snake_case_name}.py"
@@ -84,9 +114,14 @@ def generate_model(
     default=None,
     help="Base class(es) to inherit from, e.g. UserBase or 'UserBase, SomeMixin'",
 )
-def model(model_name, fields, model_inherits):
+@click.option(
+    "--index",
+    multiple=True,
+    help="Add compound index. Format: 'field1,field2[unique,sparse,desc]'",
+)
+def model(model_name, fields, model_inherits, index):
     """Generate a new model."""
-    output = generate_model(model_name, fields, model_inherits)
+    output = generate_model(model_name, fields, model_inherits, index)
 
     click.echo(
         click.style(
