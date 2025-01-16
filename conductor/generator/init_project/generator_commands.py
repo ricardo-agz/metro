@@ -61,11 +61,14 @@ Remember to adhere to Metro syntax and best practices:
 - Use `list:` for array fields
 - Use `^` for unique fields
 - Use `?` for optional fields
-- Use `@` for indexed fields
 - Use `hashed_str` for password fields
 - Use `file` or `list:file` for file upload fields
 - Timestamp fields for creation and last update like created_at and updated_at are automatically added and are not 
 required in the model definition.
+- All custom, non-crud routes in controllers or scaffolds must contain an action name and a brief description using the 
+  appropriate syntax:
+    * Format: `http_method:path (query: params) (body: params) (desc: description) (action_name: action_name)`
+    * Example: `-a "get:search (query: term:str) (desc: Search users) (action_name: search_users)"`
 
 2. Controller Lifecycle Management
 <metro_controller_lifecycle>
@@ -166,16 +169,22 @@ Provide your response in the following format:
 <initial_thoughts>
 
 1. High-level Generation strategy
-    <required_models>
+    <required_models> (all models, not just non-scaffolded ones)
     [List all models defined in the technical design doc and their respective fields]
     </required_models>
     
-    <api_routes_by_controller>
+    <api_routes_by_controller> (all API routes and all controllers, not just non-scaffolded ones)
     [Map each of the api endpoints defined in the technical design doc to an appropriate associated controller and 
-    give an action name for each endpoint]
-    </api_routes_by_controller> 
+    give an action name for each endpoint. The API endpoints in the technical design doc should closely align to their 
+    controller route defined here, minor changes are allowed only if they improve code structure or readability or 
+    best practices. Listing each api route, write the controller it belongs to, the http method, the route, any query
+    or body parameters, the action name, and a very brief description of what the action does. 
+    For example:
+    GET /api/posts -> PostsController, get, /posts, get_posts, List all Posts
+    GET /api/posts/{id} -> PostsController, get, /posts/{id}, get_post, Get a specific Post by ID]
+    </api_routes_by_controller>
 
-    <scaffolds>
+    <scaffolds> (list of names of resources where their model and controller should be generated together as a scaffold)
     [resource for resource in required_models if ResourceNameController exists in api_routes_by_controller]
     </scaffolds>
     
@@ -206,6 +215,9 @@ Provide your response in the following format:
     </revisions>    
 </initial_thoughts>
 
+Things to consider in your commands:
+
+
 <rough_draft_commands>
 # Commands should be ordered by dependencies, with base/auth controllers first if needed
 # Include brief comments explaining key decisions
@@ -215,12 +227,13 @@ Provide your response in the following format:
 <reflection>
 Carefully re-read and analyze the technical design doc. 
 Go over all required functionalities, are they all handled by an endpoint included in the generated commands?
-Go over every API route, are they all covered in the generated commands?
-Go over every model in the data schema, are they all generated? Are all the fields correct? Are all:
+Go over every API route, are they all covered in the generated commands? [Explicitly write out each route in the design
+doc and check if it's covered in the generated commands like this: GET /api/posts -> Post scaffold (get_posts), 
+GET /api/posts/{id} -> Post scaffold (get_post), etc.]
+Go over every model in the data schema of the design doc, are they all generated? Are all the fields correct? Are all:
     - unique fields marked with the `^` suffix?
     - optional fields marked with the `?` suffix?
-    - fields with an index marked with the `@` suffix?
-    - compound indexes defined correctly?
+    - indexes defined correctly?
     - relationships between models defined correctly?
     - file fields handled by the `file` or `list:file` field type instead of an individual url string field? (unless specifically specified otherwise in the <project_description>
 Go over each of the generated commands, do they all:
@@ -232,9 +245,7 @@ Re-read the Metro documentation, are we making use of all the features that Metr
     - hashed_str for password fields
     - file or list:file for file upload fields
     - user authentication is logic is inherited from the UserBase model (unless specifically specified otherwise in the <project_description>
-Re-read the Metro documentation and each of the generated commands. Do they all follow the correct syntax? Do any:
-    - have typos?
-    - mix up field modifier suffixes like `^`, `?`, `@` for something other than their intended use? 
+Re-read the Metro documentation and each of the generated commands. Do they all follow the correct syntax?
 </reflection>
 
 <optimizations>
@@ -246,6 +257,10 @@ Write the bottleneck, how it can be optimized, and what the changes required to 
 <metro_commands>
 [Your final, validated Metro commands here, one per line. If no changes are needed, copy the rough draft commands here]
 </metro_commands>
+
+<user_message>
+[Your final message to the user explaining the commands you have generated and any design decisions you made.]
+</user_message>
 
 """
 

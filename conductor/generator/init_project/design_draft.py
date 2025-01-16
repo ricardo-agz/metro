@@ -52,11 +52,42 @@ Provide your technical design in the following structured format:
 
 4. API Design
 
-* Define the API endpoints for each feature. For each endpoint, specify:
+* Think about each functionality and the required API endpoints to enable it. Think about whether it maps to a single 
+endpoint or multiple endpoints. For example, for a post like/unlike feature, you could use either:
+    - Single toggle endpoint: POST /api/posts/{postId}/toggle-like
+    - Separate endpoints: POST /api/posts/{postId}/like and DELETE /api/posts/{postId}/like
+    
+    In cases where either approach could work, think through the tradeoffs. Consider factors like:
+    - API clarity and intent
+    - State management requirements
+    - Performance implications
+    - Handling of race conditions
+    - Audit/logging needs
+    
+* Define the API endpoints for each feature. Make sure to consider security and best practices in your API design. 
+Some common bad patterns to avoid:
+    - If the user is making a request, don't pass the user ID in the request body since this creates opportunities for
+    attackers to manipulate the user ID and it is redundant since we can get the user ID from the authentication token.
+    
+* Authentication Security Requirements:
+    For login, registration, and password reset endpoints, you MUST implement these rate limit policies:
+    - Primary rate limit by username/email: 
+        - 3 failed attempts per minute
+        - 20 failed attempts per hour
+        - Successful login resets the counters
+    - Secondary rate limit by IP: Maximum 1000 requests per hour to handle extreme abuse cases
+
+* For each endpoint, specify:
     - HTTP method (GET, POST, PUT, DELETE)
     - Route pattern
     - Request parameters (path, query, body)
     - If the endpoint requires authentication/authorization
+    - If the endpoint should be rate-limited. If so, specify the rate limit policy:
+        - Note: Authentication endpoints MUST implement both username and IP-based rate limiting as defined above
+        - For non-auth endpoints:
+            - Number of requests per time period
+            - If the rate limit is global or dynamic
+            - How the key for the rate limit is determined
 </design>
 
 Your design must be wrapped in the <design> tag and should be structured according to the provided outline.

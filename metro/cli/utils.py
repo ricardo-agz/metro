@@ -1,3 +1,5 @@
+import re
+
 import click
 from pydantic import BaseModel
 
@@ -115,7 +117,7 @@ def process_fields(
 
             unique = name.endswith("^")
             optional = name.endswith("?")
-            indexed = name.endswith("@")
+            indexed = False
             field_code, pydantic = process_field(name, type_, optional, unique, indexed)
             fields_code += field_code
             pydantic_code += pydantic
@@ -149,7 +151,7 @@ def parse_hook(hook_str: str) -> tuple[str, str]:
 
 
 def parse_params_block(block):
-    """Parse a parameters block like 'query: page:int,limit:int'"""
+    """Parse a parameters block like 'query: page:int,limit:int' or 'action_name: custom_name'"""
     if not block:
         return {}
 
@@ -159,14 +161,18 @@ def parse_params_block(block):
 
     param_type, params_str = block.split(":", 1)
     param_type = param_type.strip()
+
+    # Handle action_name specially
+    if param_type == "action_name":
+        return {"action_name": params_str.strip()}
+
+    # Handle description
+    if param_type == "desc":
+        return {"desc": params_str.strip()}
+
+    # Handle query and body params
     params = {}
-
     if params_str:
-        # For description, just use the entire params string as is
-        if param_type == "desc":
-            return {"desc": params_str.strip()}
-
-        # For query and body params, parse the key-value pairs
         param_pairs = [p.strip() for p in params_str.split(",")]
         for pair in param_pairs:
             if ":" in pair:
@@ -190,7 +196,7 @@ def parse_method_spec(method_spec):
     current_block = ""
     paren_count = 0
 
-    for char in method_spec[len(method_path) :]:
+    for char in method_spec[len(method_path):]:
         if char == "(":
             paren_count += 1
             if paren_count == 1:  # Start of a new block
@@ -206,46 +212,12 @@ def parse_method_spec(method_spec):
         elif paren_count > 0:  # Inside a block
             current_block += char
 
-    # Extract path parameters
+    # Parse each parameter block
     path_params = {}
-    final_path_parts = []
-
-    for part in path.split("/"):
-        if not part:  # Skip empty parts
-            continue
-
-        if "{" in part and "}" in part:
-            param_start = part.find("{") + 1
-            param_end = part.find("}")
-            param_name = part[param_start:param_end]
-
-            # Check for type specification in ()
-            param_type = "str"  # Default type
-            if "(" in part and ")" in part:
-                type_start = part.find("(") + 1
-                type_end = part.find(")")
-                param_type = part[type_start:type_end]
-
-            path_params[param_name] = param_type
-            final_path_parts.append(f"{{{param_name}}}")
-        else:
-            final_path_parts.append(part)
-
-    final_path = "/".join(final_path_parts)
-
-    # Parse parameter blocks for query, body, and description
     query_params = {}
     body_params = {}
+    action_name = None
     description = None
-
-    path_parts = [x for x in path.split("/") if "{" not in x] if "/" in path else [path]
-    action_name = to_snake_case(path_parts[-1]) if path_parts else ""
-    if action_name in ["get", "post", "put", "delete"]:
-        action_name = (
-            to_snake_case(path_parts[:-2])
-            if len(path_parts) > 1
-            else f"{action_name}_method"
-        )
 
     for block in param_blocks:
         params = parse_params_block(block)
@@ -256,14 +228,19 @@ def parse_method_spec(method_spec):
         elif "desc" in params:
             description = params["desc"]
         elif "action_name" in params:
-            action_name = to_snake_case(["action_name"])
+            action_name = params["action_name"]
+
+    # If no explicit action name is provided, generate one from the path
+    if not action_name:
+        path_parts = [x for x in path.split("/") if "{" not in x] if "/" in path else [path]
+        action_name = to_snake_case(path_parts[-1]) if path_parts else ""
 
     if description is None:
-        description = f"Custom {http_method.upper()} endpoint for {final_path}"
+        description = f"Custom {http_method.upper()} endpoint for {path}"
 
     return {
         "http_method": http_method.lower(),
-        "path": final_path,
+        "path": path,
         "path_params": path_params,
         "query_params": query_params,
         "body_params": body_params,
@@ -499,7 +476,7 @@ def process_index_option(index_str: str) -> dict:
     fields = []
     for field in fields_part.split(","):
         field = field.strip()
-        field.rstrip("^@?")  # Strip any markers
+        field.rstrip("^?")  # Strip any markers
 
         if not field:
             raise click.BadParameter(f"Empty field in index specification: {index_str}")

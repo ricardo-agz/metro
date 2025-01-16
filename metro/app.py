@@ -1,13 +1,19 @@
+import importlib
+import inspect
+import os
+import pkgutil
+from pathlib import Path
 from fastapi import FastAPI, Request, Response
 from fastapi.routing import ASGIApp
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.datastructures import Headers
 from typing import Callable
-from .config import Config, config as app_config
-from .exceptions import exception_handlers
-from .db.connect_db import db_manager
-from .jobs.worker import MetroWorker
 
+from metro.controllers import Controller
+from metro.config import Config, config as app_config
+from metro.exceptions import exception_handlers
+from metro.db.connect_db import db_manager
+from metro.jobs.worker import MetroWorker
 from metro.admin import AdminPanelController, AdminPanelAuthController
 from metro.logger import logger
 
@@ -71,6 +77,91 @@ class MethodOverrideMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class DirectoryNotFoundError(Exception):
+    """Raised when the controllers directory cannot be found."""
+    pass
+
+
+def discover_controllers(controllers_dir: str = "app/controllers") -> list[tuple[type[Controller], str]]:
+    """
+    Discovers all controller classes in the specified directory and their URL prefixes.
+    """
+    controllers = []
+
+    # First verify the directory exists
+    abs_path = Path(controllers_dir).resolve()
+    if not abs_path.exists():
+        raise DirectoryNotFoundError(f"Controllers directory not found: {controllers_dir}")
+
+    # Convert to proper Python package path relative to current working directory
+    try:
+        # Convert controllers_dir to a module path
+        module_parts = controllers_dir.split('/')
+        base_module = '.'.join(module_parts)
+
+        # Import the base controllers package
+        controllers_package = importlib.import_module(base_module)
+        package_path = Path(controllers_package.__file__).parent
+
+        def get_url_prefix(module_name: str) -> str:
+            """Convert module path to URL prefix"""
+            # Remove base module prefix to get relative path
+            if module_name.startswith(base_module):
+                rel_path = module_name[len(base_module):].lstrip(".")
+            else:
+                rel_path = module_name
+
+            if not rel_path:
+                return ""
+
+            # Convert module path to URL path segments
+            path_parts = rel_path.split(".")
+
+            # Remove the final part if it's a controller module name
+            if path_parts[-1].endswith("_controller"):
+                path_parts = path_parts[:-1]
+
+            # Convert to URL path
+            if path_parts:
+                return "/" + "/".join(path_parts)
+            return ""
+
+        # Walk through all modules in the package
+        for finder, name, is_pkg in pkgutil.walk_packages([str(package_path)], f"{base_module}."):
+            try:
+                # Import the module
+                module = importlib.import_module(name)
+                url_prefix = get_url_prefix(name)
+
+                # Find controller classes in the module
+                for item_name, item in inspect.getmembers(module, inspect.isclass):
+                    if (issubclass(item, Controller) and
+                            item != Controller and
+                            item.__module__ == module.__name__):
+
+                        # Combine module path prefix with explicit controller prefix
+                        controller_prefix = getattr(item, 'route_prefix', '')
+                        if controller_prefix:
+                            # Ensure controller prefix starts with /
+                            if not controller_prefix.startswith('/'):
+                                controller_prefix = '/' + controller_prefix
+                            full_prefix = url_prefix + controller_prefix
+                        else:
+                            full_prefix = url_prefix
+
+                        controllers.append((item, full_prefix))
+                        logger.debug(f"Discovered controller {item.__name__} with prefix: {full_prefix}")
+
+            except ImportError as e:
+                logger.error(f"Failed to import module {name}: {e}")
+                continue
+
+    except ImportError as e:
+        raise ImportError(f"Failed to import controllers package: {e}")
+
+    return controllers
+
+
 class Metro(FastAPI):
     def __init__(self, config: Config = None, **kwargs):
         default_kwargs = {
@@ -91,6 +182,7 @@ class Metro(FastAPI):
         self.add_middleware(MethodOverrideMiddleware)
 
         disable_admin_panel = not kwargs.get("admin_panel_enabled", True)
+        auto_discover_controllers = kwargs.get("auto_discover_controllers", True)
 
         # Enable admin panel if enabled
         if self.config.ADMIN_PANEL_ENABLED and not disable_admin_panel:
@@ -100,6 +192,10 @@ class Metro(FastAPI):
                 logger.info(
                     f"Admin panel running on {self.config.ADMIN_PANEL_ROUTE_PREFIX}."
                 )
+
+        if self.config.AUTO_DISCOVER_CONTROLLERS and auto_discover_controllers:
+            controllers_dir = getattr(self.config, 'CONTROLLERS_DIR', 'app/controllers')
+            self.auto_discover_controllers(controllers_dir)
 
     def connect_db(self):
         for alias, db_config in self.config.DATABASES.items():
@@ -130,6 +226,35 @@ class Metro(FastAPI):
         else:
             # Assume it's a standard FastAPI route
             pass
+
+    def auto_discover_controllers(self, controllers_dir: str = "app/controllers"):
+        """
+        Automatically discovers and registers all controllers in the specified directory.
+        Handles nested directory prefixes and explicit controller prefixes.
+
+        Args:
+            controllers_dir: Path to the controllers directory relative to the project root
+        """
+        try:
+            # Gets list of (controller_class, url_prefix) tuples
+            discovered_controllers = discover_controllers(controllers_dir)
+
+            for controller_cls, prefix in discovered_controllers:
+                # Get the controller name without 'Controller' suffix for use as a tag
+                controller_name = controller_cls.__name__.replace('Controller', '')
+
+                # Register the controller using the prefix from discovery
+                # (which already includes both directory structure and explicit prefixes)
+                self.include_controller(
+                    controller_cls,
+                    prefix=prefix,
+                    tags=[controller_name]
+                )
+                logger.info(f"Registered controller {controller_name} with prefix: {prefix}")
+
+        except (DirectoryNotFoundError, ImportError) as e:
+            logger.error(f"Controller auto-discovery failed: {e}")
+            raise
 
 
 __all__ = [

@@ -43,6 +43,8 @@ class Config:
         self.ADMIN_PANEL_ROUTE_PREFIX = "/admin"
         self.ADMIN_AUTH_CLASS = "User"
 
+        self.AUTO_DISCOVER_CONTROLLERS = True
+
         self.JWT_SECRET_KEY = "PLEASE_CHANGE_ME"
 
         self.FILE_STORAGE_BACKEND = "filesystem"

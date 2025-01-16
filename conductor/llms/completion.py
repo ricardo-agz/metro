@@ -24,14 +24,17 @@ def openai_completion(
     temperature: float = None,
 ):
     client = OpenAI()
+    max_tokens_key = "max_completion_tokens" if model in ["o1", "o1-mini"] else "max_tokens"
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "tools": tools,
+    }
+    if max_tokens:
+        kwargs[max_tokens_key] = max_tokens
 
-    return client.chat.completions.create(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-        tools=tools,
-        temperature=temperature,
-    )
+    return client.chat.completions.create(**kwargs)
 
 
 def anthropic_completion(

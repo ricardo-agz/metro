@@ -226,7 +226,7 @@ def generate_crud_methods(
             ControllerActionMethod(
                 method_code=(
                     f"    @delete('/{url_prefix}/{{id}}')\n"
-                    f"    async def delete(self, request: Request, id: str):\n"
+                    f"    async def destroy(self, request: Request, id: str):\n"
                     f'        """Delete a specific {resource_name_pascal}.\n\n'
                     f"        Args:\n"
                     f"            request (Request): The request object\n"

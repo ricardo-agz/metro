@@ -54,7 +54,7 @@ def generate_model(
                 indexes_str.append(f"{{'fields': {fields_str}, {', '.join(options)}}}")
             else:
                 # Simple index
-                fields_str = repr(idx["fields"])
+                fields_str = repr(idx["fields"]) if len(idx["fields"]) > 1 else repr(idx["fields"][0])
                 indexes_str.append(fields_str)
 
         meta_indexes = (

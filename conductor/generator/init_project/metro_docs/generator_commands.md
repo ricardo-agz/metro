@@ -26,8 +26,8 @@ metro generate scaffold NAME [FIELDS...] [OPTIONS]
 
 `--actions`, `-a` (multiple): Define additional custom routes beyond CRUD operations
 
-* Format: `http_method:path (query: params) (body: params) (desc: description)`
-* Example: `-a "get:search (query: term:str) (desc: Search users)"`
+* Format: `http_method:path (query: params) (body: params) (desc: description) (action_name: action_name)`
+* Example: `-a "get:search (query: term:str) (desc: Search users) (action_name: search_users)"`
 
 
 `--exclude-crud`, `-x` (multiple): Specify which CRUD operations to exclude
@@ -66,8 +66,8 @@ Full CRUD scaffold with search and custom actions:
 
 ```bash
 metro generate scaffold Product name:str price:float \
-  -a "get:search (query: term:str,min_price:float,max_price:float) (desc: Search products)" \
-  -a "post:bulk-update (body: ids:list,price:float) (desc: Update multiple products)"
+  -a "get:search (query: term:str,min_price:float,max_price:float) (desc: Search products) (action_name: search_products)" \
+  -a "post:bulk-update (body: ids:list,price:float) (desc: Update multiple products) (action_name: bulk_update_products)"
 ```
 
 Scaffold with limited CRUD and inheritance:
@@ -85,8 +85,8 @@ Custom API endpoints with complex parameters:
 
 ```bash
 metro generate scaffold Order items:list:ref:Product status:str \
-  -a "post:process/{id} (body: payment_method:str) (desc: Process order payment)" \
-  -a "get:user/{user_id} (query: status:str,date_from:datetime) (desc: Get user orders)" \
+  -a "post:process/{id} (body: payment_method:str) (desc: Process order payment) (action_name: process_order)" \
+  -a "get:user/{user_id} (query: status:str,date_from:datetime) (desc: Get user orders) (action_name: get_user_orders)"
   --controller-inherits "BaseController,PaymentMixin"
 ```
 
@@ -230,7 +230,7 @@ metro generate model Student courses:list:ref:Course
 This will generate a `Student` model with a `courses` field that is a list of references to `Course` models.
 
 ### Field Modifiers
-`?`, `^`, `@` are used to define a field as optional, unique, or an index respectively.
+`?` and `^`are used to define a field as optional or unique respectively.
 
 #### Optional Field: 
 Append `?` to the field name to mark it as optional.
@@ -250,15 +250,6 @@ metro generate model User username^:str
 
 This will generate a `User` model with a unique `username` field.
 
-#### Indexed Field:
-Append `@` to the field name to create an index for that field.
-
-```bash
-metro generate model Product price@:float category@:str
-```
-
-This will generate a `Product` model with indexed `price` and `category` fields for faster querying and filtering.
-
 #### Field Choices:
 For string fields that should only accept specific values, use the `choices` syntax with optional default value (marked with `*`):
 
@@ -276,17 +267,20 @@ You can combine these modifiers to create fields with multiple attributes:
 metro generate model Product \
   sku^:str \                                  # unique identifier 
   name^:str \                                 # unique name
-  price@:float \                              # indexed for price filtering/sorting
-  stock@:int \                                # indexed for inventory queries
-  category@:str \                             # indexed for category filtering
+  price:float \                               # no modifier makes price required
   description?:str \                          # optional description
   status:string:choices[active*,discontinued] # enum with default value
 ```
 
-#### Compound Indexes:
-Use the `--index` flag to create compound indexes that span multiple fields. The syntax supports various MongoDB index options:
+#### Indexes:
+Use the `--index` flag to create indexes for more efficient querying. The syntax supports various MongoDB index options:
+
+Note that built in timestamp fields like `created_at`, `updated_at`, and `deleted_at` are automatically indexed and don't need to be specified.
 
 ```bash
+# Basic single field index
+metro generate model User email:str --index "email"
+
 # Basic compound index
 metro generate model Product name:str price:float --index "name,price"
 
