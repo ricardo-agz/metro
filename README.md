@@ -504,6 +504,144 @@ AWS_REGION_NAME = "us-east-1"
 
 ---
 
+## Controllers
+
+Controllers handle incoming HTTP requests and define the behavior of your API endpoints. Metro provides a simple, 
+decorator-based routing system similar to Flask or FastAPI.
+
+### Basic Controller
+    
+```python
+from metro.controllers import Controller, Request, get, post, put, delete
+
+class UsersController(Controller):
+    meta = {
+        'url_prefix': '/users'  # Optional URL prefix for all routes in this controller
+    }
+
+    @get("/")
+    async def index(self, request: Request):
+        return {"users": []}
+    
+    @post("/")
+    async def create(self, request: Request):
+        user_data = await request.json()
+        return {"message": "User created"}
+    
+    ...
+```
+
+### Request Parameters
+```python
+from metro import Controller, Request, Body, Query, Path
+
+class ProductsController(Controller):
+    @get("/search")
+    async def search(
+        self,
+        request: Request,
+        query: str,               # Query parameter (?query=...)
+        category: str = None,     # Optional query parameter
+        page: int = 1,           # Query parameter with default value
+    ):
+        return {"results": []}
+
+    @post("/{id}/reviews")
+    async def add_review(
+        self,
+        request: Request,
+        id: str,                 # Path parameter
+        rating: int = Body(...), # Body parameter (required)
+        comment: str = Body(None) # Optional body parameter
+    ):
+        return {"message": "Review added"}
+```
+
+### Response Types
+
+Controllers can return various types of responses:
+
+```python
+from metro.responses import JSONResponse, HTMLResponse, RedirectResponse
+
+class ContentController(Controller):
+    @get("/data")
+    async def get_data(self, request: Request):
+        # Automatically converted to JSON
+        return {"data": "value"}
+    
+    @get("/page")
+    async def get_page(self, request: Request):
+        # Explicit HTML response
+        return HTMLResponse("<h1>Hello World</h1>")
+    
+    @get("/old-path")
+    async def redirect(self, request: Request):
+        # Redirect response
+        return RedirectResponse("/new-path")
+```
+
+### Error Handling
+
+Metro provides standard exceptions for common HTTP error cases:
+
+```python
+from metro.exceptions import NotFoundError, BadRequestError, UnauthorizedError
+
+class ArticlesController(Controller):
+    @get("/{id}")
+    async def show(self, request: Request, id: str):
+        article = None  # Replace with actual lookup
+        if not article:
+            raise NotFoundError(detail="Article not found")
+        return article
+
+    @post("/")
+    async def create(self, request: Request):
+        data = await request.json()
+        if "title" not in data:
+            raise BadRequestError(detail="Title is required")
+        return {"message": "Article created"}
+```
+
+### Directory-Based URL Prefixes
+
+Metro automatically generates URL prefixes based on your controller's location in the directory structure. This helps 
+organize your API endpoints logically:
+
+```
+app/controllers/
+├── users_controller.py          # Routes will be at /
+├── api/
+│   ├── v1/
+│   │   ├── posts_controller.py  # Routes will be at /api/v1
+│   │   └── tags_controller.py   # Routes will be at /api/v1
+│   └── v2/
+│       └── posts_controller.py  # Routes will be at /api/v2
+└── admin/
+    └── users_controller.py      # Routes will be at /admin
+```
+
+#### For example:
+
+```python
+# app/controllers/api/v1/posts_controller.py
+class PostsController(Controller):
+    @get("/")          # Final URL: /api/v1/posts
+    async def index(self, request: Request):
+        return {"posts": []}
+
+    @get("/{id}")      # Final URL: /api/v1/posts/{id}
+    async def show(self, request: Request, id: str):
+        return {"post": {"id": id}}
+
+    # You can still add your own prefix that combines with the directory prefix
+    meta = {
+        'url_prefix': '/blog'  # Routes will be at /api/v1/blog
+    }
+```
+
+
 ## Controller Lifecycle Hooks
 
 Lifecycle hooks like `before_request` and `after_request` can be defined directly in a controller or inherited from a parent controller. Hooks are useful for tasks such as authentication, logging, or cleanup.

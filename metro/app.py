@@ -140,7 +140,9 @@ def discover_controllers(controllers_dir: str = "app/controllers") -> list[tuple
                             item.__module__ == module.__name__):
 
                         # Combine module path prefix with explicit controller prefix
-                        controller_prefix = getattr(item, 'route_prefix', '')
+                        controller_meta = getattr(item, 'meta', {})
+                        controller_prefix = controller_meta.get('url_prefix', '')
+
                         if controller_prefix:
                             # Ensure controller prefix starts with /
                             if not controller_prefix.startswith('/'):
