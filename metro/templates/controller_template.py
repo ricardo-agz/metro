@@ -19,5 +19,9 @@ from metro.exceptions import (
 
 {pydantic_models}
 class {controller_name}({base_controllers}):
+    meta = {{
+        "url_prefix": "{url_prefix}",
+    }}
+
 {controller_code}
 """

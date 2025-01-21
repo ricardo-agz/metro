@@ -8,6 +8,8 @@ from metro.cli.utils import (
     get_default_action_name,
     process_controller_inheritance,
     process_fields,
+    load_model_class,
+    extract_parent_fields,
 )
 from metro.templates import controller_template
 from metro.utils import (
@@ -117,7 +119,6 @@ def generate_method_docstring(
 
 
 def generate_crud_methods(
-    url_prefix: str,
     resource_name: str,
     pydantic_code: str,
     exclude_crud: tuple[str, ...] = (),
@@ -131,13 +132,13 @@ def generate_crud_methods(
         controller_actions.append(
             ControllerActionMethod(
                 method_code=(
-                    f"    @get('/{url_prefix}')\n"
+                    f"    @get()\n"
                     f"    async def index(self, request: Request):\n"
                     f'        """List all {resource_name_plural_pascal}.\n\n'
                     f"        Returns:\n"
                     f"            list: List of {resource_name_pascal} objects\n"
                     f'        """\n'
-                    f"        items = {resource_name_pascal}.find()\n"
+                    f"        items = {resource_name_pascal}.find_all()\n"
                     f"        return [item.to_dict() for item in items]\n\n"
                 ),
                 pydantic_model=None,
@@ -148,7 +149,7 @@ def generate_crud_methods(
         controller_actions.append(
             ControllerActionMethod(
                 method_code=(
-                    f"    @get('/{url_prefix}/{{id}}')\n"
+                    f"    @get('/{{id}}')\n"
                     f"    async def show(self, request: Request, id: str):\n"
                     f'        """Get a specific {resource_name_pascal} by ID.\n\n'
                     f"        Args:\n"
@@ -176,7 +177,7 @@ def generate_crud_methods(
         controller_actions.append(
             ControllerActionMethod(
                 method_code=(
-                    f"    @post('/{url_prefix}')\n"
+                    f"    @post()\n"
                     f"    async def create(self, request: Request, data: {resource_name_pascal}Create):\n"
                     f'        """Create a new {resource_name_pascal}.\n\n'
                     f"        Args:\n"
@@ -200,7 +201,7 @@ def generate_crud_methods(
         controller_actions.append(
             ControllerActionMethod(
                 method_code=(
-                    f"    @put('/{url_prefix}/{{id}}')\n"
+                    f"    @put('/{{id}}')\n"
                     f"    async def update(self, request: Request, id: str, data: {resource_name_pascal}Update):\n"
                     f'        """Update a specific {resource_name_pascal}.\n\n'
                     f"        Args:\n"
@@ -225,7 +226,7 @@ def generate_crud_methods(
         controller_actions.append(
             ControllerActionMethod(
                 method_code=(
-                    f"    @delete('/{url_prefix}/{{id}}')\n"
+                    f"    @delete('/{{id}}')\n"
                     f"    async def destroy(self, request: Request, id: str):\n"
                     f'        """Delete a specific {resource_name_pascal}.\n\n'
                     f"        Args:\n"
@@ -250,7 +251,6 @@ def generate_crud_methods(
 
 def generate_additional_methods(
     actions: tuple[str, ...],
-    url_prefix: str,
     pydantic_class_prefix: str,
 ) -> list[ControllerActionMethod]:
     """Generate additional controller methods from action specifications."""
@@ -266,7 +266,7 @@ def generate_additional_methods(
             continue
 
         http_method = spec["http_method"]  # e.g. get, put, post, ...
-        final_path = f"/{url_prefix}/{spec['path'].lstrip('/')}"
+        final_path = f"/{spec['path'].lstrip('/')}"
         path_params = spec["path_params"]
         query_params = spec["query_params"]
         body_params = spec["body_params"]
@@ -345,8 +345,10 @@ def generate_controller(
     after_hooks: tuple[str, ...] = (),
     resource_fields: tuple[str, ...] = None,
     is_scaffold: bool = False,
+    model_inherits: str | None = None,
 ) -> GenerateControllerOutput:
     """Generate a controller file and update __init__.py"""
+    all_fields = list(resource_fields) if resource_fields else []
 
     # Process pluralized names
     controller_name = pluralize(resource_name) if is_scaffold else resource_name
@@ -369,7 +371,13 @@ def generate_controller(
 
     controller_actions = []
     if is_scaffold:
-        processed_fields = process_fields(resource_fields, indexes=())
+        if model_inherits:
+            parent_model = load_model_class(to_pascal_case(model_inherits))
+            if parent_model:
+                parent_fields = extract_parent_fields(parent_model)
+                all_fields = parent_fields + list(resource_fields)
+
+        processed_fields = process_fields(all_fields, indexes=())
         _, crud_pydantic_code, fields_additional_imports = (
             processed_fields.fields_code,
             processed_fields.pydantic_code,
@@ -378,7 +386,6 @@ def generate_controller(
         additional_imports += "\n" + "\n".join(fields_additional_imports)
 
         crud_methods = generate_crud_methods(
-            url_prefix=url_prefix,
             resource_name=resource_name,
             pydantic_code=crud_pydantic_code,
             exclude_crud=exclude_crud,
@@ -387,7 +394,6 @@ def generate_controller(
 
     additional_methods = generate_additional_methods(
         actions=actions,
-        url_prefix=url_prefix,
         pydantic_class_prefix=controller_name_pascal,
     )
     controller_actions.extend(additional_methods)
@@ -412,6 +418,7 @@ def generate_controller(
         controller_code=controller_code,
         additional_imports=additional_imports,
         base_controllers=base_controllers,
+        url_prefix=url_prefix,
     )
 
     controller_content = format_python(controller_content)

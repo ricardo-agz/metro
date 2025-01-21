@@ -1,9 +1,24 @@
+import importlib.util
+import inspect
+import os
 import re
 
 import click
 from pydantic import BaseModel
 
-from metro.utils import mongoengine_type_mapping, pydantic_type_mapping, to_snake_case
+from metro.models import BaseModel as DBBaseModel
+from metro.config import config
+from metro.utils import (
+    mongoengine_type_mapping,
+    pydantic_type_mapping,
+    to_snake_case,
+    get_inner_field_type,
+)
+
+CORE_MODEL_MAPPINGS = {
+    "UserBase": "metro.auth.user.user_base.UserBase",
+    "APIKeyBase": "metro.auth.api_key.api_key_base.APIKeyBase",
+}
 
 
 def process_inheritance(model_inherits: str) -> tuple[str, list[str]]:
@@ -68,9 +83,7 @@ class ProcessFieldsOutput(BaseModel):
     meta_indexes: list[dict] = []  # For compound and regular indexes
 
 
-def process_fields(
-    fields: tuple[str, ...], indexes: tuple[str, ...]
-) -> ProcessFieldsOutput:
+def process_fields(fields: list[str], indexes: tuple[str, ...]) -> ProcessFieldsOutput:
     """
     Process field definitions and generate model fields and Pydantic schemas.
 
@@ -125,6 +138,9 @@ def process_fields(
         except ValueError as e:
             raise click.BadParameter(f"Error processing field {field}: {str(e)}")
 
+    has_datetime = any("datetime" in f for f in fields)
+    if has_datetime:
+        additional_imports.append("from datetime import datetime")
     if has_choices:
         additional_imports.append("from typing import Literal")
 
@@ -196,7 +212,7 @@ def parse_method_spec(method_spec):
     current_block = ""
     paren_count = 0
 
-    for char in method_spec[len(method_path):]:
+    for char in method_spec[len(method_path) :]:
         if char == "(":
             paren_count += 1
             if paren_count == 1:  # Start of a new block
@@ -232,7 +248,9 @@ def parse_method_spec(method_spec):
 
     # If no explicit action name is provided, generate one from the path
     if not action_name:
-        path_parts = [x for x in path.split("/") if "{" not in x] if "/" in path else [path]
+        path_parts = (
+            [x for x in path.split("/") if "{" not in x] if "/" in path else [path]
+        )
         action_name = to_snake_case(path_parts[-1]) if path_parts else ""
 
     if description is None:
@@ -497,3 +515,77 @@ def process_index_option(index_str: str) -> dict:
         index_spec["sparse"] = True
 
     return index_spec
+
+
+def load_model_class(model_name: str) -> DBBaseModel:
+    """Load a model class by name."""
+    if model_name in CORE_MODEL_MAPPINGS:
+        module_path, class_name = CORE_MODEL_MAPPINGS[model_name].rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
+    else:
+        models_dir = config.MODELS_DIR.lstrip(".").lstrip("/").rstrip("/").split("/")
+        models_dir = os.path.join(os.getcwd(), *models_dir)
+
+        if not os.path.exists(models_dir):
+            raise click.ClickException(
+                f"Error: Models directory '{models_dir}' not found."
+            )
+
+        for root, _, files in os.walk(models_dir):
+            for file in files:
+                if file.endswith(".py") and not file.startswith("__"):
+                    file_path = os.path.join(root, file)
+                    module_name = os.path.relpath(file_path, os.getcwd())[:-3].replace(
+                        os.sep, "."
+                    )
+
+                    spec = importlib.util.spec_from_file_location(
+                        module_name, file_path
+                    )
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+
+                    for name, obj in inspect.getmembers(module):
+                        if (
+                            inspect.isclass(obj)
+                            and name == model_name
+                            and obj.__module__ == module.__name__
+                        ):
+                            return obj
+
+        raise click.ClickException(
+            f"Error: Model class '{model_name}' not found in '{models_dir}'."
+        )
+
+
+def extract_parent_fields(model_class: DBBaseModel) -> list[str]:
+    """
+    Extract parent class fields from a model class.
+    """
+    parent_fields = []
+    for field_name, field_instance in model_class._fields.items():
+        if field_name in {
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "id",
+            "_cls",
+            "_id",
+        }:
+            continue
+
+        field_type = get_inner_field_type(field_instance)
+
+        # Add field modifiers
+        field_def = field_name
+        if getattr(field_instance, "unique", False):
+            field_def += "^"
+        if not getattr(field_instance, "required", True):
+            field_def += "?"
+
+        field_def += f":{field_type}"
+
+        parent_fields.append(field_def)
+
+    return parent_fields

@@ -12,7 +12,8 @@ def admin():
 
 
 @admin.command()
-def createsuperuser():
+@click.option("--all-fields", is_flag=True, help="Prompt for all fields.")
+def createsuperuser(all_fields: bool = False):
     """Seeds a superuser."""
     admin_auth_class = find_auth_class()
     if not admin_auth_class:
@@ -21,7 +22,14 @@ def createsuperuser():
 
     fields = {}
     for field in admin_auth_class._fields.keys():
-        if field in ["id", "created_at", "updated_at", "deleted_at"]:
+        if (
+            field in ["id", "created_at", "updated_at", "deleted_at", "last_login"]
+            and not all_fields
+        ):
+            continue
+
+        if field in ["is_staff", "is_superuser"] and not all_fields:
+            fields[field] = True
             continue
 
         field_type = admin_auth_class._fields[field].__class__.__name__

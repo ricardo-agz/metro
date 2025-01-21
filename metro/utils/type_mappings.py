@@ -1,3 +1,6 @@
+from metro.models.fields import *
+
+
 mongoengine_type_mapping = {
     "str": "StringField()",
     "text": "StringField()",
@@ -22,20 +25,6 @@ mongoengine_type_mapping = {
     "file": "FileField()",
 }
 
-tortoise_type_mapping = {
-    "str": "CharField(max_length=255)",
-    "text": "TextField()",
-    "int": "IntField()",
-    "bool": "BooleanField()",
-    "float": "FloatField()",
-    "datetime": "DatetimeField()",
-    "date": "DateField()",
-    "time": "TimeField()",
-    "uuid": "UUIDField()",
-    "json": "JSONField()",
-    "decimal": "DecimalField(max_digits=18, decimal_places=2)",
-}
-
 pydantic_type_mapping = {
     "str": "str",
     "text": "str",
@@ -57,3 +46,36 @@ pydantic_type_mapping = {
     "list[float]": "list[float]",
     "list[datetime]": "list[datetime]",
 }
+
+MONGO_DB_FIELD_TO_FIELD_TYPE = {
+    StringField: "str",
+    IntField: "int",
+    FloatField: "float",
+    BooleanField: "bool",
+    DateTimeField: "datetime",
+    DecimalField: "decimal",
+    EmailField: "str",
+    URLField: "str",
+    UUIDField: "str",
+    DictField: "dict",
+    ReferenceField: lambda field: f"ref:{field.document_type.__name__}",
+    ListField: lambda field: f"list:{get_inner_field_type(field.field)}",
+    EmbeddedDocumentField: lambda field: f"embedded:{field.document_type.__name__}",
+    # Special fields
+    HashedField: "hashed_str",
+    FileField: "file",
+    FileListField: "list:file",
+}
+
+
+def get_inner_field_type(field: any) -> str:
+    """Get the type string for a field, handling nested structures."""
+    field_class = field.__class__
+
+    if field_class in MONGO_DB_FIELD_TO_FIELD_TYPE:
+        type_def = MONGO_DB_FIELD_TO_FIELD_TYPE[field_class]
+        if callable(type_def):
+            return type_def(field)
+        return type_def
+
+    return "str"  # fallback

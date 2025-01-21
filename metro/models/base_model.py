@@ -1,6 +1,6 @@
 from datetime import datetime
 from mongoengine import Document
-from .base_logic import BaseModelLogic
+from .base_logic import BaseModelLogic, DynamicFinderMetaclass
 from .specialty_fields.file_field import FileHandlingMixin
 
 

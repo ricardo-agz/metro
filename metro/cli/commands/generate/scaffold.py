@@ -94,6 +94,7 @@ def scaffold(
         after_hooks=after_request,
         resource_fields=fields,
         is_scaffold=True,
+        model_inherits=model_inherits,
     )
     click.echo(
         click.style(

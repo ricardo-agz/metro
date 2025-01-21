@@ -1,4 +1,5 @@
 import black
+import isort
 import click
 
 
@@ -26,7 +27,10 @@ def insert_line_without_duplicating(file_path, line):
 
 def format_python(source_code: str) -> str:
     try:
-        return black.format_str(source_code, mode=black.FileMode())
+        # First, sort the imports using isort
+        sorted_code = isort.code(source_code)
+        # Then apply Black formatting
+        return black.format_str(sorted_code, mode=black.FileMode())
     except Exception as e:
         click.echo(click.style(f"Error formatting code: {e}", fg="red"))
         return source_code

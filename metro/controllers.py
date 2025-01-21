@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Annotated
 
 from fastapi import (
     APIRouter,
@@ -7,10 +7,14 @@ from fastapi import (
     WebSocketDisconnect,
     WebSocketException,
     Request,
+    Depends,
 )
 from functools import wraps
 import inspect
 
+from fastapi.security import HTTPAuthorizationCredentials
+
+from metro.auth.helpers import security
 from metro.exceptions import UnauthorizedError, HTTPException
 from metro.logger import logger
 
@@ -57,19 +61,19 @@ def route(path: str, methods: list[str]):
     return decorator
 
 
-def get(path: str):
+def get(path: str = ""):
     return route(path, ["GET"])
 
 
-def post(path: str):
+def post(path: str = ""):
     return route(path, ["POST"])
 
 
-def put(path: str):
+def put(path: str = ""):
     return route(path, ["PUT"])
 
 
-def delete(path: str):
+def delete(path: str = ""):
     return route(path, ["DELETE"])
 
 
@@ -216,6 +220,32 @@ class ControllerMeta(type):
             params = list(sig.parameters.values())
             if params and params[0].name == "self":
                 params = params[1:]
+
+            has_request_param = any(
+                p.name == "request" and p.annotation == Request for p in params
+            )
+            if not has_request_param:
+                request_param = inspect.Parameter(
+                    name="_request",  # Use _request to avoid conflicts
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    annotation=Request,
+                    default=inspect.Parameter.empty,
+                )
+                params.append(request_param)
+
+            # Filter mongoengine parameters (from decorators)
+            params = [p for p in params if not hasattr(p.annotation, "_fields")]
+
+            # If method requires auth, inject the user dependency
+            if getattr(bound_method, "_requires_auth", False):
+                # Add user parameter with proper dependency annotation
+                user_param = inspect.Parameter(
+                    name="credentials",
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    annotation=Annotated[str, Depends(security)],
+                )
+                params.append(user_param)
+
             new_sig = sig.replace(parameters=params)
 
             @wraps(bound_method)
@@ -255,7 +285,10 @@ class ControllerMeta(type):
             endpoint.__signature__ = new_sig
 
             for http_method in methods:
-                getattr(router, http_method.lower())(path)(endpoint)
+                # Register the endpoint with the router
+                # e.g. router.get("/path")(endpoint)
+                router_method = getattr(router, http_method.lower())
+                router_method(path)(endpoint)
 
         # Register both HTTP and WebSocket routes
         for attr_name, method in attrs.items():
