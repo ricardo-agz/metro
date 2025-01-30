@@ -290,9 +290,6 @@ class Metro(FastAPI):
                 self.include_controller(
                     controller_cls, prefix=prefix, tags=[controller_name]
                 )
-                logger.info(
-                    f"Registered controller {controller_name} with prefix: {prefix}"
-                )
 
         except (DirectoryNotFoundError, ImportError) as e:
             logger.error(f"Controller auto-discovery failed: {e}")

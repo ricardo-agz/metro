@@ -38,11 +38,17 @@ class EmailSender:
             logger.debug("Using provided EmailProvider.")
             return provider
 
-        mailgun_configured = hasattr(config, "MAILGUN_DOMAIN") and hasattr(
-            config, "MAILGUN_API_KEY"
+        mailgun_configured = (
+            hasattr(config, "MAILGUN_DOMAIN")
+            and config.MAILGUN_DOMAIN
+            and hasattr(config, "MAILGUN_API_KEY")
+            and config.MAILGUN_API_KEY
         )
-        aws_configured = hasattr(config, "AWS_ACCESS_KEY_ID") and hasattr(
-            config, "AWS_SECRET_ACCESS_KEY"
+        aws_configured = (
+            hasattr(config, "AWS_ACCESS_KEY_ID")
+            and config.AWS_ACCESS_KEY_ID
+            and hasattr(config, "AWS_SECRET_ACCESS_KEY")
+            and config.AWS_SECRET_ACCESS_KEY
         )
 
         if mailgun_configured:

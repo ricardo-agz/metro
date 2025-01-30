@@ -84,6 +84,7 @@ def get_authenticated_user(
     :return: UserBase object if authenticated, raises UnauthorizedError otherwise
     :raises UnauthorizedError: If no authentication token is provided or if the token is invalid
     """
+
     token = credentials.credentials if credentials else get_token_from_request(request)
     if not token:
         raise UnauthorizedError("No authentication token provided")
@@ -118,14 +119,13 @@ def requires_auth(function: Callable):
 
         request = next(
             (arg for arg in args if isinstance(arg, Request)), kwargs.get("request")
-        )
+        ) or kwargs.get("_request")
         credentials = next(
             (arg for arg in args if isinstance(arg, HTTPAuthorizationCredentials)),
             kwargs.get("credentials"),
         )
 
         curr_user = get_authenticated_user(credentials=credentials, request=request)
-        print("curr_user: ", curr_user)
 
         if "user" in sig.parameters:
             kwargs["user"] = curr_user
@@ -137,9 +137,6 @@ def requires_auth(function: Callable):
             )
 
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
-        print("filtered_kwargs: ", filtered_kwargs)
-        print("non-filtered kwargs: ", kwargs)
-        print("args: ", args)
 
         return await function(*args, **filtered_kwargs)
 
@@ -182,8 +179,6 @@ def requires_role(role: str) -> Callable:
         raise TypeError(
             "requires_role expects a string, use requires_any_roles for a list"
         )
-
-    print("ayooooo")
 
     def decorator(func: Callable) -> Callable:
         # Don't use requires_auth decorator directly

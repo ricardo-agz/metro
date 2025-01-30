@@ -56,6 +56,8 @@ class Config:
         self.AWS_SECRET_ACCESS_KEY = ""
         self.AWS_REGION_NAME = ""
 
+        self.TWO_FACTOR_AUTH = {}
+
     def _load_base_env(self):
         """Load base .env file and set variables as attributes"""
         # Load the base .env file

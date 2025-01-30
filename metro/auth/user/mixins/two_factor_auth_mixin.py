@@ -3,12 +3,14 @@ import hashlib
 import hmac
 import time
 from abc import abstractmethod, ABC
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, field
 from enum import Enum
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional, TypedDict, Union
 from urllib.parse import quote
+
+from mongoengine import EmbeddedDocument, EmbeddedDocumentField, EnumField
 
 from metro.communications import SMSSender, SMSProvider, EmailSender, EmailProvider
 from metro.models import (
@@ -22,9 +24,26 @@ from metro.models import (
 )
 from metro.logger import logger
 from metro.utils.generate_qr_code import generate_qr_code_b64
+from metro.config import config
 
 
 class TooManyAttemptsError(Exception):
+    pass
+
+
+class VerificationLockedError(Exception):
+    """Raised when the account is temporarily locked due to too many failed attempts."""
+
+    def __init__(self, minutes_remaining: int):
+        self.minutes_remaining = minutes_remaining
+        super().__init__(
+            f"Account is temporarily locked. Try again in {minutes_remaining} minutes."
+        )
+
+
+class VerificationAdminLockedError(Exception):
+    """Raised when verification is locked and requires admin intervention."""
+
     pass
 
 
@@ -59,6 +78,29 @@ class TFATemplateConfig:
             self.email_context = {}
         if self.sms_context is None:
             self.sms_context = {}
+
+
+@dataclass
+class TFATemplates:
+    """Email and SMS templates configuration"""
+
+    email_template: Optional[str] = None
+    email_subject: str = "Your verification code"
+    email_context: dict = field(default_factory=dict)
+    sms_template: str = "Your code is: {code}"
+    sms_context: dict = field(default_factory=dict)
+
+
+@dataclass
+class TOTPSettings:
+    """TOTP configuration"""
+
+    digits: int = 6
+    interval: int = 30
+    algorithm: str = "sha1"
+    secret_length: int = 32
+    tolerance: int = 1
+    issuer: str = "Metro"
 
 
 @dataclass
@@ -106,6 +148,23 @@ class TFASettings:
             settings["templates"] = TFATemplateConfig(**settings["templates"])
 
         return cls(**{k: v for k, v in settings.items() if k in cls.__annotations__})
+
+    @classmethod
+    def from_config(cls, config: dict = None) -> "TFASettings":
+        """Create settings from config dict with nested dataclass handling"""
+        if not config:
+            return cls()
+
+        # Handle nested configurations
+        if "templates" in config:
+            config["templates"] = TFATemplates(**config["templates"])
+        if "totp" in config:
+            config["totp"] = TOTPSettings(**config["totp"])
+
+        # Filter only known settings
+        valid_settings = {k: v for k, v in config.items() if k in cls.__annotations__}
+
+        return cls(**valid_settings)
 
 
 class TwoFactorMethod(str, Enum):
@@ -340,208 +399,284 @@ class TFAProviders:
         return cls(**filtered_providers)
 
 
-class MethodConfig(TypedDict):
-    enabled: bool
-    destination: str
+class TFAMethod(EmbeddedDocument):
+    enabled = BooleanField(required=True)
+    destination = StringField(required=True)
 
 
-class VerificationState(TypedDict):
-    code_hash: str
-    expires_at: datetime
-    method: str
+class ActiveVerification(EmbeddedDocument):
+    code_hash = StringField(required=True)
+    expires_at = DateTimeField(required=True)
+    method = EnumField(TwoFactorMethod, required=True)
+
+
+class TFAConfig(EmbeddedDocument):
+    """Persistent 2FA configuration"""
+
+    methods = DictField(field=EmbeddedDocumentField(TFAMethod), default=dict)
+    backup_code_hashes = ListField(StringField(), default=list)
+
+
+class TFAVerificationState(EmbeddedDocument):
+    """Temporary 2FA state"""
+
+    active_verification: ActiveVerification = EmbeddedDocumentField(ActiveVerification)
+    attempts = IntField(default=0)
+    last_attempt = DateTimeField()
+    lockout_until = DateTimeField()
+    lockout_count = IntField(default=0)
 
 
 class TwoFactorAuthMixin:
-    tfa_methods: dict[str, MethodConfig] = DictField(default=dict)
-    tfa_verification: VerificationState | None = DictField()
-    tfa_attempts: int = IntField(default=0)
-    tfa_last_attempt: datetime | None = DateTimeField()
-    tfa_lockout_until: datetime | None = DateTimeField()
-    tfa_lockout_count: int = IntField(
-        default=0
-    )  # Track number of times account has been locked out
-    tfa_backup_codes: list[str] = ListField(StringField(), default=list)
+    # Persistent configuration
+    tfa_config: TFAConfig = EmbeddedDocumentField(TFAConfig, default=TFAConfig)
+    # Temporary state
+    tfa_verification_state: TFAVerificationState = EmbeddedDocumentField(
+        TFAVerificationState, default=TFAVerificationState
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.tfa_settings: TFASettings = TFASettings()
-        self.tfa_providers: TFAProviders
+        # Get config with clear precedence:
+        # 1. Model's TFAOptions
+        # 2. Global config
+        # 3. Defaults
+        options = getattr(self.__class__, "TwoFactorAuthOptions", None)
+        global_config = getattr(config, "TWO_FACTOR_AUTH", {})
 
-        # Check for either style of config
-        config = None
-        if hasattr(self, "TFAConfig"):
-            config = self.TFAConfig
-        elif hasattr(self, "tfa_config"):
-            config = type("TFAConfig", (), self.tfa_config)
+        self._tfa_settings = (
+            getattr(options, "settings", None)
+            if options and hasattr(options, "settings")
+            else global_config.get("settings") or TFASettings()
+        )
 
-        # Apply config if found
-        if config:
-            if hasattr(config, "providers"):
-                # Use from_dict for both dict and TFAProviders instances
-                providers_data = (
-                    config.providers.__dict__
-                    if not isinstance(config.providers, dict)
-                    else config.providers
-                )
-                self.tfa_providers = TFAProviders.from_dict(providers_data)
+        provider_config = (
+            getattr(options, "providers", None)
+            if options
+            else global_config.get("providers") or {}
+        )
+        providers = {}
 
-            if hasattr(config, "settings"):
-                # Use from_dict for both dict and TFASettings instances
-                settings_data = (
-                    config.settings.__dict__
-                    if not isinstance(config.settings, dict)
-                    else config.settings
-                )
-                self.tfa_settings = TFASettings.from_dict(settings_data)
+        if "email" in provider_config:
+            if isinstance(provider_config["email"], dict):
+                providers["email"] = EmailTwoFactorProvider(**provider_config["email"])
+            elif isinstance(provider_config["email"], EmailTwoFactorProvider):
+                providers["email"] = provider_config["email"]
+            else:
+                raise ValueError("Invalid email provider configuration")
 
-        if not self.tfa_providers:
-            raise ValueError("No 2FA providers configured")
+        if "sms" in provider_config:
+            if isinstance(provider_config["sms"], dict):
+                providers["sms"] = SMSTwoFactorProvider(**provider_config["sms"])
+            elif isinstance(provider_config["sms"], SMSTwoFactorProvider):
+                providers["sms"] = provider_config["sms"]
+            elif isinstance(provider_config["sms"], bool):
+                if provider_config["sms"]:
+                    providers["sms"] = SMSTwoFactorProvider()
+            else:
+                raise ValueError("Invalid SMS provider configuration")
 
-    def check_verification_allowed(self) -> tuple[bool, Optional[str]]:
+        if "totp" in provider_config:
+            providers["totp"] = TOTPTwoFactorProvider()
+
+        self._tfa_providers = TFAProviders(**providers)
+
+    def _check_verification_allowed(self):
         """
-        Check if verification attempts are allowed.
-        Returns (allowed, reason_if_not_allowed)
+        Check if verification attempts are allowed. If not, raise an exception.
         """
         now = datetime.utcnow()
 
         # Check if currently in lockout period
-        if self.tfa_lockout_until and now < self.tfa_lockout_until:
-            minutes_remaining = int((self.tfa_lockout_until - now).total_seconds() / 60)
-            return (
-                False,
-                f"Account is temporarily locked. Try again in {minutes_remaining} minutes.",
+        if (
+            self.tfa_verification_state.lockout_until
+            and now < self.tfa_verification_state.lockout_until
+        ):
+            minutes_remaining = int(
+                (self.tfa_verification_state.lockout_until - now).total_seconds() / 60
             )
+            raise VerificationLockedError(minutes_remaining)
 
         # Check if requiring admin intervention
-        if self.tfa_lockout_count >= self.tfa_settings.max_lockouts_before_admin:
-            return (
-                False,
-                "Account is locked due to too many failed attempts. Please contact support.",
-            )
+        if (
+            self.tfa_verification_state.lockout_count
+            >= self._tfa_settings.max_lockouts_before_admin
+        ):
+            raise VerificationAdminLockedError()
 
         # Reset attempts if outside attempt window
-        if self.tfa_last_attempt and now - self.tfa_last_attempt > timedelta(
-            minutes=self.tfa_settings.attempt_window_minutes
+        if (
+            self.tfa_verification_state.last_attempt
+            and now - self.tfa_verification_state.last_attempt
+            > timedelta(minutes=self._tfa_settings.attempt_window_minutes)
         ):
-            self.tfa_attempts = 0
+            self.tfa_verification_state.attempts = 0
 
-        return True, None
-
-    def record_verification_attempt(self, success: bool):
+    def _record_verification_attempt(self, success: bool):
         """
         Record a verification attempt and handle lockouts
         """
         now = datetime.utcnow()
-        self.tfa_last_attempt = now
+        self.tfa_verification_state.last_attempt = now
 
         if success:
             # Reset attempts and lockout count on successful verification
-            self.tfa_attempts = 0
-            self.tfa_lockout_until = None
-            self.tfa_lockout_count = 0
+            self.tfa_verification_state.attempts = 0
+            self.tfa_verification_state.lockout_until = None
+            self.tfa_verification_state.lockout_count = 0
         else:
-            self.tfa_attempts += 1
-
+            self.tfa_verification_state.attempts += 1
             # Check if we need to trigger a lockout
-            if self.tfa_attempts >= self.tfa_settings.max_verification_attempts:
-                self.tfa_lockout_count += 1
-                self.tfa_lockout_until = now + timedelta(
-                    minutes=self.tfa_settings.lockout_duration_minutes
+            if (
+                self.tfa_verification_state.attempts
+                >= self._tfa_settings.max_verification_attempts
+            ):
+                self.tfa_verification_state.lockout_count += 1
+                self.tfa_verification_state.lockout_until = now + timedelta(
+                    minutes=self._tfa_settings.lockout_duration_minutes
                 )
-                self.tfa_attempts = 0
+                self.tfa_verification_state.attempts = 0
 
         self.save()
 
-    def admin_reset_lockout(self):
+    def two_factor_auth_admin_reset_lockout(self):
         """Allow admins to reset lockout state"""
-        self.tfa_attempts = 0
-        self.tfa_lockout_until = None
-        self.tfa_lockout_count = 0
+        self.tfa_verification_state.attempts = 0
+        self.tfa_verification_state.lockout_until = None
+        self.tfa_verification_state.lockout_count = 0
         self.save()
 
     def _hash_code(self, code: str) -> str:
         """Hash a verification code using SHA-256."""
         return hashlib.sha256(code.encode()).hexdigest()
 
-    def get_provider(self, method: TwoFactorMethod) -> Optional[TwoFactorProviderBase]:
-        return self.tfa_providers.__dict__.get(method.value)
+    def _get_provider(self, method: TwoFactorMethod) -> Optional[TwoFactorProviderBase]:
+        return getattr(self._tfa_providers, method.value, None)
 
-    def enable_method(
-        self, method: TwoFactorMethod, destination: str
+    def enable_two_factor_auth_method(
+        self, method: TwoFactorMethod | str, destination: str = None
     ) -> Optional[list[str]]:
         """
         Enable a specific 2FA method for the user.
         Returns backup codes if this is the first enabled method.
         """
-        provider = self.get_provider(method)
-        if not provider or not provider.validate_destination(destination):
-            return None
+        if isinstance(method, str):
+            method = TwoFactorMethod(method)
 
-        self.tfa_methods[method.value] = {
-            "enabled": True,
-            "destination": destination,
-        }
+        provider = self._get_provider(method)
+
+        if not provider:
+            raise ValueError(f"Provider not configured for {method}")
+
+        if destination is None:
+            if method == TwoFactorMethod.EMAIL:
+                if hasattr(self, "email"):
+                    destination = self.email
+                elif hasattr(self, "email_address"):
+                    destination = self.email_address
+                else:
+                    raise ValueError(
+                        "enable_two_factor_method() was called with no destination and the inherited class has no email or email_address attribute"
+                    )
+            elif method == TwoFactorMethod.SMS:
+                if hasattr(self, "phone_number"):
+                    destination = self.phone_number
+                elif hasattr(self, "phone"):
+                    destination = self.phone
+                else:
+                    raise ValueError(
+                        "enable_two_factor_method() was called with no destination and the inherited class has no phone or phone_number attribute"
+                    )
+            else:
+                raise ValueError(
+                    "enable_two_factor_method() was called with no destination and no default destination for the method"
+                )
+
+        if not provider or not provider.validate_destination(destination):
+            raise ValueError(
+                f"Invalid destination for {method}. Destination: {destination}"
+            )
+
+        self.tfa_config.methods[method.value] = TFAMethod(
+            enabled=True,
+            destination=destination,
+        )
 
         # Generate backup codes if this is the first enabled method
         backup_codes = None
-        if len(self.tfa_methods) == 1:
+        if len(self.tfa_config.methods) == 1:
             backup_codes = self._generate_backup_codes()
-            self.backup_code_hashes = [self._hash_code(code) for code in backup_codes]
+            self.tfa_config.backup_code_hashes = [
+                self._hash_code(code) for code in backup_codes
+            ]
 
         self.save()
         return backup_codes
 
-    def disable_method(self, method: TwoFactorMethod) -> None:
+    def disable_two_factor_auth_method(self, method: TwoFactorMethod) -> None:
         """Disable a specific 2FA method."""
-        if method.value in self.tfa_methods:
-            del self.tfa_methods[method.value]
-            if not self.tfa_methods:
-                self.backup_code_hashes = []
+        if method.value in self.tfa_config.methods:
+            del self.tfa_config.methods[method.value]
+            if not self.tfa_config.methods:
+                self.tfa_config.backup_code_hashes = []
             self.save()
 
-    def get_enabled_methods(self) -> list[TwoFactorMethod]:
+    def get_enabled_two_factor_auth_methods(self) -> list[TwoFactorMethod]:
         """Get list of enabled 2FA methods."""
-        return [TwoFactorMethod(method) for method in self.tfa_methods.keys()]
+        return [TwoFactorMethod(method) for method in self.tfa_config.methods.keys()]
 
-    def generate_verification_code(self, method: TwoFactorMethod) -> Optional[str]:
+    def generate_two_factor_auth_verification_code(
+        self, method: TwoFactorMethod
+    ) -> Optional[str]:
         """Generate a new verification code for the specified method."""
         if (
-            method.value not in self.tfa_methods
-            or not self.tfa_methods[method.value]["enabled"]
+            method.value not in self.tfa_config.methods
+            or not self.tfa_config.methods[method.value]["enabled"]
         ):
             return None
 
-        if self.tfa_attempts >= self.tfa_settings.max_verification_attempts:
+        if (
+            self.tfa_verification_state.last_attempt
+            and datetime.utcnow() - self.tfa_verification_state.last_attempt
+            > timedelta(minutes=self._tfa_settings.attempt_window_minutes)
+        ):
+            # Reset attempts if outside the window
+            self.tfa_verification_state.attempts = 0
+
+        if (
+            self.tfa_verification_state.attempts
+            >= self._tfa_settings.max_verification_attempts
+        ):
             raise TooManyAttemptsError("Too many verification attempts")
 
         code = "".join(
-            secrets.choice("0123456789") for _ in range(self.tfa_settings.code_length)
+            secrets.choice("0123456789") for _ in range(self._tfa_settings.code_length)
         )
 
-        self.tfa_verification = {
+        self.tfa_verification_state.active_verification = {
             "code_hash": self._hash_code(code),
             "expires_at": datetime.utcnow()
-            + timedelta(minutes=self.tfa_settings.code_expiry_minutes),
+            + timedelta(minutes=self._tfa_settings.code_expiry_minutes),
             "method": method.value,
         }
 
         self.save()
         return code
 
-    def send_verification_code(self, method: TwoFactorMethod) -> bool:
+    def send_two_factor_auth_verification_code(self, method: TwoFactorMethod) -> bool:
         """Send a verification code using the specified method."""
         if (
-            method.value not in self.tfa_methods
-            or not self.tfa_methods[method.value]["enabled"]
+            method.value not in self.tfa_config.methods
+            or not self.tfa_config.methods[method.value]["enabled"]
         ):
             return False
 
-        provider = self.get_provider(method)
+        provider = self._get_provider(method)
         if not provider:
             return False
 
-        destination = self.tfa_methods[method.value]["destination"]
+        destination = self.tfa_config.methods[method.value]["destination"]
         code = self.generate_verification_code(method)
 
         if not code:
@@ -558,12 +693,12 @@ class TwoFactorAuthMixin:
         if not self._validate_method(method):
             return False
 
-        provider = self.get_provider(method)
+        provider = self._get_provider(method)
         if not provider:
             return False
 
-        destination = self.tfa_methods[method.value]["destination"]
-        code = self.generate_verification_code(method)
+        destination = self.tfa_config.methods[method.value]["destination"]
+        code = self.generate_two_factor_auth_verification_code(method)
 
         try:
             provider.send_code(destination, code)
@@ -572,48 +707,57 @@ class TwoFactorAuthMixin:
             logger.error(f"Failed to send verification code: {e}")
             return False
 
-    def verify_code(self, code: str, method: Optional[TwoFactorMethod] = None) -> bool:
+    def verify_two_factor_auth_code(
+        self, code: str, method: Optional[TwoFactorMethod] = None
+    ) -> bool:
         """
         Verify the provided code. If method is specified, only verify against that method.
         """
-        allowed, reason = self.check_verification_allowed()
-        if not allowed:
-            raise TooManyAttemptsError(reason)
+        self._check_verification_allowed()
 
         if method == TwoFactorMethod.TOTP:
-            provider: TOTPTwoFactorProvider = self.tfa_providers.totp
+            provider: TOTPTwoFactorProvider = self._tfa_providers.totp
             if not provider or not self._validate_method(method):
                 return False
 
-            secret = self.tfa_methods[method.value]["destination"]
-            return provider.verify_code(secret, code, self.tfa_settings)
+            secret = self.tfa_config.methods[method.value]["destination"]
+            return provider.verify_code(secret, code, self._tfa_settings)
 
-        if not self.tfa_verification:
-            self.record_verification_attempt(False)
+        if not self.tfa_verification_state.active_verification:
+            self._record_verification_attempt(False)
             return False
 
-        if datetime.utcnow() > self.tfa_verification["expires_at"]:
-            self.record_verification_attempt(False)
+        if (
+            datetime.utcnow()
+            > self.tfa_verification_state.active_verification.expires_at
+        ):
+            self._record_verification_attempt(False)
             return False
 
-        if method and method.value != self.tfa_verification["method"]:
-            self.record_verification_attempt(False)
+        if (
+            method
+            and method.value != self.tfa_verification_state.active_verification.method
+        ):
+            self._record_verification_attempt(False)
             return False
 
-        if self._hash_code(code) != self.tfa_verification["code_hash"]:
-            self.record_verification_attempt(False)
+        if (
+            self._hash_code(code)
+            != self.tfa_verification_state.active_verification.code_hash
+        ):
+            self._record_verification_attempt(False)
             return False
 
         # Success path
-        self.tfa_verification = None
-        self.record_verification_attempt(True)
+        self.tfa_verification_state.active_verification.delete()
+        self._record_verification_attempt(True)
         return True
 
-    def verify_backup_code(self, code: str) -> bool:
+    def verify_two_factor_auth_backup_code(self, code: str) -> bool:
         """Verify and consume a backup code."""
         code_hash = self._hash_code(code)
-        if code_hash in self.backup_code_hashes:
-            self.backup_code_hashes.remove(code_hash)
+        if code_hash in self.tfa_config.backup_code_hashes:
+            self.tfa_config.backup_code_hashes.remove(code_hash)
             self.save()
             return True
         return False
@@ -621,49 +765,49 @@ class TwoFactorAuthMixin:
     def _generate_backup_codes(self) -> list[str]:
         """Generate new backup codes."""
         return [
-            secrets.token_hex(4) for _ in range(self.tfa_settings.backup_codes_count)
+            secrets.token_hex(4) for _ in range(self._tfa_settings.backup_codes_count)
         ]
-
-    def requires_two_factor(self) -> bool:
-        """Check if the user has any 2FA methods enabled."""
-        return bool(self.tfa_methods)
 
     def _validate_method(self, method: TwoFactorMethod) -> bool:
         return (
-            method.value in self.tfa_methods
-            and self.tfa_methods[method.value]["enabled"]
+            method.value in self.tfa_config.methods
+            and self.tfa_config.methods[method.value].enabled
         )
 
-    def refresh_backup_codes(self) -> list[str]:
+    def refresh_two_factor_auth_backup_codes(self) -> list[str]:
         """Generate a new set of backup codes, invalidating old ones."""
         new_codes = self._generate_backup_codes()
-        self.backup_code_hashes = [self._hash_code(code) for code in new_codes]
+        self.tfa_config.backup_code_hashes = [
+            self._hash_code(code) for code in new_codes
+        ]
         self.save()
         return new_codes
 
-    def enable_totp(self) -> dict:
+    def enable_two_factor_auth_totp(self) -> dict:
         """
         Enable TOTP for the user.
         Returns the TOTP secret and URI for QR code generation.
         """
-        provider: TOTPTwoFactorProvider = self.tfa_providers.totp
+        provider: TOTPTwoFactorProvider = self._tfa_providers.totp
         if not provider:
             raise ValueError("TOTP provider not configured")
 
         # Generate secret and URI
-        totp_data = provider.setup_totp(self, self.tfa_settings)
+        totp_data = provider.setup_totp(self, self._tfa_settings)
 
         # Store the secret as the destination
-        self.tfa_methods[TwoFactorMethod.TOTP.value] = {
+        self.tfa_config.methods[TwoFactorMethod.TOTP.value] = {
             "enabled": True,
             "destination": totp_data["secret"],
         }
 
         # Generate backup codes if this is the first enabled method
         backup_codes = None
-        if len(self.tfa_methods) == 1:
+        if len(self.tfa_config.methods) == 1:
             backup_codes = self._generate_backup_codes()
-            self.backup_code_hashes = [self._hash_code(code) for code in backup_codes]
+            self.tfa_config.backup_code_hashes = [
+                self._hash_code(code) for code in backup_codes
+            ]
 
         self.save()
 
@@ -676,3 +820,7 @@ class TwoFactorAuthMixin:
             result["backup_codes"] = backup_codes
 
         return result
+
+    def is_tfa_required(self) -> bool:
+        """Check if two-factor authentication is enabled"""
+        return bool(self.tfa_config.methods)
